@@ -14,8 +14,8 @@
 
     <string name="intro_welcome_title">Welcome to MJ PDF</string>
     <string name="intro_welcome_tagline">A fast, simple and powerful PDF reader</string>
-    <string name="intro_welcome_privacy">Private. Nothing leaves your device.</string>
-    <string name="intro_welcome_clean">No ads. No telemetry. No accounts.</string>
+    <string name="intro_welcome_privacy">Private. Your data stay on your device.</string>
+    <string name="intro_welcome_clean">No ads. No tracking. No accounts.</string>
     <string name="intro_welcome_foss">Free and open source.</string>
     <string name="intro_made_by"><![CDATA[Made by <a href="https://mudlej.com">Mudlej</a>]]></string>
     <string name="intro_library_title">All your PDFs in one place</string>
@@ -199,7 +199,7 @@
     <string name="features_topic_privacy">Privacy and Data</string>
     <string name="features_topic_privacy_subtitle">Incognito, history, passwords and backup</string>
     <string name="features_privacy_local_title">Everything stays on your device</string>
-    <string name="features_privacy_local_body">No ads, no telemetry, no accounts.\nThe network is used only for PDFs you ask the app to download.</string>
+    <string name="features_privacy_local_body">No ads, no tracking, no accounts.\nThe network is used only to open online PDFs you request and to send crash reports only if you explicitly approve.</string>
     <string name="features_privacy_incognito_title">Incognito mode</string>
     <string name="features_privacy_incognito_body">Open a document and nothing is recorded: no history, no position, no password, no per document settings.\nReach it from the reader menu, a long press on the home open button, a book\'s options, or the settings.</string>
     <string name="features_privacy_shared_copies_title">Shared file copies</string>
@@ -488,7 +488,7 @@
     <string name="keep_screen_on">Keep Screen On</string>
     <string name="keep_screen_on_summary">Prevent the screen from sleeping while reading.</string>
     <string name="space_between_pages">Show a Gap Between Pages</string>
-    <string name="privacy_info">This app does not collect any data.\nThe following permissions are required to provide specific features in the app:\n- <b>Internet</b>: open PDFs through links\n- <b>Storage</b>: open files from storage, save PDFs opened through links</string>
+    <string name="privacy_info">Your PDFs and reading data stay on your device. MJ PDF has no ads or tracking of any kind.\n\nIf the app crashes, you can choose to send a technical report to help diagnose it. The report contains a stack trace, app version, crash time, package name, Android version, phone model, logcat, and available memory. It does not include your PDF documents and is never sent without your approval.\n\nPermissions:\n- Internet: open PDFs from links and send crash reports only if you approve\n- Storage / All files access: discover, open, rename, delete, and manage PDFs across device and removable storage</string>
     <string name="switch_theme">Toggle PDF Theme</string>
     <string name="switch_to_light_mode">Light Mode</string>
     <string name="switch_to_dark_mode">Dark Mode</string>
