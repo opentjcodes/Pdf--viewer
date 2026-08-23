@@ -41,6 +41,7 @@
     <string name="privacy">Gizlilik Politikası</string>
     <string name="whats_new_title">Yenilikler</string>
     <string name="whats_new_intro">Doğruluk ve kararlılık odaklı bir sürüm. Yeni okuma seçenekleri, çok daha güvenli kaydetme ve uygulamanın tamamında uzun bir düzeltme listesi.</string>
+    <string name="whats_new_v3_intro">Şimdiye kadarki en büyük güncelleme. Yeni bir ana ekran, açıklama araçları ve uygulamanın hemen hemen her bölümünün yeniden ele alınması.</string>
     <string name="whats_new_section_reading">Okuma</string>
     <string name="whats_new_section_performance">Performans ve düzeltmeler</string>
     <string name="features_title">Uygulama Özellikleri</string>

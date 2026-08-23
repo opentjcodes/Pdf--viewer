@@ -41,6 +41,7 @@
     <string name="privacy">Політика приватності</string>
     <string name="whats_new_title">Що нового</string>
     <string name="whats_new_intro">Випуск для коректності та стабільності. Нові параметри читання, значно безпечніше збереження та довгий список виправлень у всьому застосунку.</string>
+    <string name="whats_new_v3_intro">Найбільше оновлення на сьогодні. Новий домашній екран, інструменти анотацій і переробка майже кожної частини застосунку.</string>
     <string name="whats_new_section_reading">Читання</string>
     <string name="whats_new_section_performance">Продуктивність і виправлення</string>
     <string name="features_title">Можливості застосунку</string>

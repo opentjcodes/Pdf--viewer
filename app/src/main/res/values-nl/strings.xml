@@ -41,6 +41,7 @@
     <string name="privacy">Privacybeleid</string>
     <string name="whats_new_title">Wat is er nieuw</string>
     <string name="whats_new_intro">Een release gericht op correctheid en stabiliteit. Nieuwe leesopties, veel veiliger opslaan en een lange lijst reparaties door de hele app.</string>
+    <string name="whats_new_v3_intro">De grootste update tot nu toe. Een nieuw startscherm, annotatiehulpmiddelen en een herziening van bijna elk onderdeel van de app.</string>
     <string name="whats_new_section_reading">Lezen</string>
     <string name="whats_new_section_performance">Prestaties en reparaties</string>
     <string name="features_title">App-functies</string>

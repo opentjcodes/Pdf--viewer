@@ -36,6 +36,8 @@ import com.gitlab.mudlej.MjPdfReader.core.ui.AppSnackbar
 import com.gitlab.mudlej.MjPdfReader.core.ui.ColorUtil
 import com.gitlab.mudlej.MjPdfReader.data.AppDatabase
 import com.gitlab.mudlej.MjPdfReader.ui.about.WhatsNewActivity
+import com.gitlab.mudlej.MjPdfReader.ui.about.WhatsNewRelease
+import com.gitlab.mudlej.MjPdfReader.ui.about.whatsNewReleaseForUpgrade
 import com.gitlab.mudlej.MjPdfReader.ui.reader.MainActivity
 import com.gitlab.mudlej.MjPdfReader.ui.intro.MainIntroActivity
 import com.gitlab.mudlej.MjPdfReader.ui.settings.SettingsActivity
@@ -159,10 +161,10 @@ class HomeActivity : AppCompatActivity(), HomeItemFunctions {
 
     private fun redirectToReaderIfHomeDisabled(): Boolean {
         if (pref.getHomeDisabled()) {
-            val whatsNewDue = consumeWhatsNewDue()
+            val release = consumeWhatsNewDue()
             startActivity(Intent(this, MainActivity::class.java))
-            if (whatsNewDue) {
-                startActivity(Intent(this, WhatsNewActivity::class.java))
+            if (release != null) {
+                startActivity(WhatsNewActivity.createIntent(this, release))
             }
             overridePendingTransition(0, 0)
             finish()
@@ -171,12 +173,13 @@ class HomeActivity : AppCompatActivity(), HomeItemFunctions {
         return false
     }
 
-    private fun consumeWhatsNewDue(): Boolean {
-        if (pref.getLastSeenVersionCode() >= BuildConfig.VERSION_CODE) {
-            return false
-        }
+    private fun consumeWhatsNewDue(): WhatsNewRelease? {
+        val release = whatsNewReleaseForUpgrade(
+            lastSeenVersionCode = pref.getLastSeenVersionCode(),
+            currentVersionCode = BuildConfig.VERSION_CODE,
+        ) ?: return null
         pref.setLastSeenVersionCode(BuildConfig.VERSION_CODE)
-        return true
+        return release
     }
 
     private fun setupWindowChrome() {
@@ -335,10 +338,7 @@ class HomeActivity : AppCompatActivity(), HomeItemFunctions {
 
     private fun maybeShowWhatsNew(launchIntro: Boolean) {
         if (!launchIntro) {
-            if (consumeWhatsNewDue()) {
-                pref.setShowFeaturesDialog(true)
-            }
-            showWhatsNewOnFirstRun()
+            showWhatsNewOnFirstRun(consumeWhatsNewDue())
         }
     }
 
@@ -383,15 +383,18 @@ class HomeActivity : AppCompatActivity(), HomeItemFunctions {
 
     private fun currentTab(): HomeTab = HomeTab.entries[binding.homePager.currentItem]
 
-    private fun showWhatsNewOnFirstRun() {
-        if (pref.getShowFeaturesDialog()) {
-            lifecycleScope.launch {
-                delay(500)
-                if (!isFinishing) {
-                    startActivity(Intent(this@HomeActivity, WhatsNewActivity::class.java))
-                }
+    private fun showWhatsNewOnFirstRun(release: WhatsNewRelease? = null) {
+        val requestedRelease = release ?: if (pref.getShowFeaturesDialog()) {
+            WhatsNewRelease.CURRENT
+        } else {
+            return
+        }
+        pref.setShowFeaturesDialog(false)
+        lifecycleScope.launch {
+            delay(500)
+            if (!isFinishing) {
+                startActivity(WhatsNewActivity.createIntent(this@HomeActivity, requestedRelease))
             }
-            pref.setShowFeaturesDialog(false)
         }
     }
 

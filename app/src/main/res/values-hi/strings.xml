@@ -41,6 +41,7 @@
     <string name="privacy">गोपनीयता नीति</string>
     <string name="whats_new_title">नया क्या है</string>
     <string name="whats_new_intro">सटीकता और स्थिरता पर केंद्रित एक अपडेट। नए पढ़ने के विकल्प, कहीं अधिक सुरक्षित सेव करना, और पूरे ऐप में सुधारों की एक लंबी सूची।</string>
+    <string name="whats_new_v3_intro">अब तक का सबसे बड़ा अपडेट। एक नई होम स्क्रीन, एनोटेशन टूल्स, और ऐप के लगभग हर हिस्से का पुनर्निर्माण।</string>
     <string name="whats_new_section_reading">पढ़ना</string>
     <string name="whats_new_section_performance">प्रदर्शन और सुधार</string>
     <string name="features_title">ऐप की विशेषताएं</string>

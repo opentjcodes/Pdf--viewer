@@ -41,6 +41,7 @@
     <string name="privacy">Datenschutzbestimmungen</string>
     <string name="whats_new_title">Was ist neu</string>
     <string name="whats_new_intro">Ein Release für Korrektheit und Stabilität. Neue Leseoptionen, deutlich sichereres Speichern und eine lange Liste von Fehlerbehebungen in der gesamten App.</string>
+    <string name="whats_new_v3_intro">Das bisher größte Update. Ein neuer Startbildschirm, Annotationswerkzeuge und eine Überarbeitung fast jedes Teils der App.</string>
     <string name="whats_new_section_reading">Lesen</string>
     <string name="whats_new_section_performance">Leistung und Fehlerbehebungen</string>
     <string name="features_title">App-Funktionen</string>

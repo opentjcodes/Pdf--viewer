@@ -41,6 +41,7 @@
     <string name="privacy">Политика конфиденциальности</string>
     <string name="whats_new_title">Что нового</string>
     <string name="whats_new_intro">Обновление, посвящённое корректности и стабильности. Новые варианты чтения, значительно более безопасное сохранение и длинный список исправлений по всему приложению.</string>
+    <string name="whats_new_v3_intro">Самое крупное обновление на сегодняшний день. Новый главный экран, инструменты аннотаций и переработка почти каждой части приложения.</string>
     <string name="whats_new_section_reading">Чтение</string>
     <string name="whats_new_section_performance">Производительность и исправления</string>
     <string name="features_title">Возможности приложения</string>

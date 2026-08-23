@@ -44,6 +44,7 @@
 
     <string name="whats_new_title">What\'s New</string>
     <string name="whats_new_intro">A correctness and stability release. New reading options, much safer saving, and a long list of fixes across the whole app.</string>
+    <string name="whats_new_v3_intro">The largest update so far. A new home screen, annotation tools, and a rework of nearly every part of the app.</string>
     <string name="whats_new_section_reading">Reading</string>
     <string name="whats_new_single_page_title">Single Page Mode</string>
     <string name="whats_new_single_page_body">Show exactly one page at a time, no matter how big the window is. Part of the new Reading Mode setting.</string>

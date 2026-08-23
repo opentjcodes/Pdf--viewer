@@ -41,6 +41,7 @@
     <string name="privacy">Política de Privacidade</string>
     <string name="whats_new_title">Novidades</string>
     <string name="whats_new_intro">Uma versão de correções e estabilidade. Novas opções de leitura, um salvamento muito mais seguro e uma longa lista de correções em todo o aplicativo.</string>
+    <string name="whats_new_v3_intro">A maior atualização até agora. Uma nova tela inicial, ferramentas de anotação e uma reformulação de quase todas as partes do aplicativo.</string>
     <string name="whats_new_section_reading">Leitura</string>
     <string name="whats_new_section_performance">Desempenho e correções</string>
     <string name="features_title">Recursos do Aplicativo</string>

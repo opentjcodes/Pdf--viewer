@@ -41,6 +41,7 @@
     <string name="privacy">Politique de vie privée</string>
     <string name="whats_new_title">Nouveautés</string>
     <string name="whats_new_intro">Une mise à jour axée sur la fiabilité et la stabilité. De nouvelles options de lecture, un enregistrement bien plus sûr, et une longue liste de corrections dans toute l\'application.</string>
+    <string name="whats_new_v3_intro">La plus grande mise à jour à ce jour. Un nouvel écran d\'accueil, des outils d\'annotation, et une refonte de presque toutes les parties de l\'application.</string>
     <string name="whats_new_section_reading">Lecture</string>
     <string name="whats_new_section_performance">Performances et corrections</string>
     <string name="features_title">Fonctionnalités de l\'application</string>
