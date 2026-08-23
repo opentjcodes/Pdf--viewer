@@ -12,8 +12,8 @@
     <string name="myLicense">Licentie</string>
     <string name="intro_welcome_title">Welkom bij MJ PDF</string>
     <string name="intro_welcome_tagline">Een snelle, eenvoudige en krachtige PDF-lezer</string>
-    <string name="intro_welcome_privacy">Privé. Niets verlaat je apparaat.</string>
-    <string name="intro_welcome_clean">Geen advertenties. Geen telemetrie. Geen accounts.</string>
+    <string name="intro_welcome_privacy">Privé. Je gegevens blijven op je apparaat.</string>
+    <string name="intro_welcome_clean">Geen advertenties. Geen tracking. Geen accounts.</string>
     <string name="intro_welcome_foss">Gratis en open source.</string>
     <string name="intro_made_by">Gemaakt door <a href="https://mudlej.com">Mudlej</a></string>
     <string name="intro_library_title">Al je PDF\'s op één plek</string>
@@ -165,7 +165,7 @@
     <string name="features_topic_privacy">Privacy en gegevens</string>
     <string name="features_topic_privacy_subtitle">Incognito, geschiedenis, wachtwoorden en back-up</string>
     <string name="features_privacy_local_title">Alles blijft op je apparaat</string>
-    <string name="features_privacy_local_body">Geen advertenties, geen telemetrie, geen accounts.\nHet netwerk wordt alleen gebruikt voor PDF\'s die je de app vraagt te downloaden.</string>
+    <string name="features_privacy_local_body">Geen advertenties, geen tracking, geen accounts.\nHet netwerk wordt alleen gebruikt om door jou aangevraagde online PDF\'s te openen en crashrapporten alleen met jouw uitdrukkelijke toestemming te verzenden.</string>
     <string name="features_privacy_incognito_title">Incognitomodus</string>
     <string name="features_privacy_incognito_body">Open een document en er wordt niets vastgelegd: geen geschiedenis, geen positie, geen wachtwoord, geen instellingen per document.\nJe bereikt dit via het menu van de lezer, een lange druk op de openknop op het startscherm, de opties van een boek, of de instellingen.</string>
     <string name="features_privacy_shared_copies_title">Gedeelde bestandskopieën</string>
@@ -393,7 +393,7 @@
     <string name="keep_screen_on">Scherm niet uitschakelen</string>
     <string name="keep_screen_on_summary">Voorkom dat het scherm in slaapstand gaat tijdens het lezen.</string>
     <string name="space_between_pages">Ruimte tussen pagina\'s</string>
-    <string name="privacy_info">Deze app verzamelt geen gegevens.\nDe volgende rechten zijn vereist i.v.m. specifieke functies in de app:\n- <b>Internet</b>: PDF\'s openen via links\n- <b>Opslag</b>: bestanden openen uit opslag, PDF\'s opslaan die via links zijn geopend</string>
+    <string name="privacy_info">Je PDF\'s en leesgegevens blijven op je apparaat. MJ PDF bevat geen advertenties of enige vorm van tracking.\n\nAls de app crasht, kun je ervoor kiezen een technisch rapport te verzenden om het probleem te helpen diagnosticeren. Het rapport bevat een stacktrace, appversie, crashtijd, pakketnaam, Android-versie, telefoonmodel, logcat en beschikbaar geheugen. Het bevat je PDF-documenten niet en wordt nooit zonder jouw toestemming verzonden.\n\nMachtigingen:\n- Internet: PDF\'s via links openen en crashrapporten alleen met jouw toestemming verzenden\n- Opslag / Toegang tot alle bestanden: PDF\'s op apparaat- en verwisselbare opslag vinden, openen, hernoemen, verwijderen en beheren</string>
     <string name="switch_theme">PDF-thema schakelen</string>
     <string name="switch_to_light_mode">Lichte modus</string>
     <string name="switch_to_dark_mode">Donkere modus</string>

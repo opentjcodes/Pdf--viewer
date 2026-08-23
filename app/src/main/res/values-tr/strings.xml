@@ -12,8 +12,8 @@
     <string name="myLicense">Lisans</string>
     <string name="intro_welcome_title">MJ PDF\'e Hoş Geldiniz</string>
     <string name="intro_welcome_tagline">Hızlı, basit ve güçlü bir PDF okuyucu</string>
-    <string name="intro_welcome_privacy">Gizli. Hiçbir şey cihazınızdan çıkmaz.</string>
-    <string name="intro_welcome_clean">Reklam yok. Telemetri yok. Hesap yok.</string>
+    <string name="intro_welcome_privacy">Özel. Verileriniz cihazınızda kalır.</string>
+    <string name="intro_welcome_clean">Reklam yok. Takip yok. Hesap yok.</string>
     <string name="intro_welcome_foss">Ücretsiz ve açık kaynak.</string>
     <string name="intro_made_by"><a href="https://mudlej.com">Mudlej</a> tarafından yapıldı</string>
     <string name="intro_library_title">Tüm PDF\'leriniz tek bir yerde</string>
@@ -165,7 +165,7 @@
     <string name="features_topic_privacy">Gizlilik ve Veri</string>
     <string name="features_topic_privacy_subtitle">Gizli mod, geçmiş, şifreler ve yedekleme</string>
     <string name="features_privacy_local_title">Her şey cihazınızda kalır</string>
-    <string name="features_privacy_local_body">Reklam yok, telemetri yok, hesap yok.\nAğ yalnızca uygulamadan indirmesini istediğiniz PDF\'ler için kullanılır.</string>
+    <string name="features_privacy_local_body">Reklam yok, takip yok, hesap yok.\nAğ yalnızca istediğiniz çevrimiçi PDF\'leri açmak ve açıkça onayladığınızda kilitlenme raporları göndermek için kullanılır.</string>
     <string name="features_privacy_incognito_title">Gizli mod</string>
     <string name="features_privacy_incognito_body">Bir belge açın ve hiçbir şey kaydedilmesin: geçmiş yok, konum yok, şifre yok, belgeye özel ayar yok.\nBuna okuyucu menüsünden, ana sayfadaki aç düğmesine uzun basarak, bir kitabın seçeneklerinden veya ayarlardan ulaşın.</string>
     <string name="features_privacy_shared_copies_title">Paylaşılan dosya kopyaları</string>
@@ -393,7 +393,7 @@
     <string name="keep_screen_on">Ekranı açık tut</string>
     <string name="keep_screen_on_summary">Okurken ekranın uykuya geçmesini önleyin.</string>
     <string name="space_between_pages">Sayfalar Arası Boşluk</string>
-    <string name="privacy_info">Bu uygulama herhangi bir veri toplamaz.\nUygulamada belirli özellikleri sağlamak için aşağıdaki izinler gereklidir:\n- <b>Internet</b>: bağlantılar aracılığıyla PDF\'leri açma\n- <b>Depolama</b>: depolamadan dosyaları açma, bağlantılar aracılığıyla açılan PDF\'leri kaydetme</string>
+    <string name="privacy_info">PDF\'leriniz ve okuma verileriniz cihazınızda kalır. MJ PDF hiçbir reklam veya takip içermez.\n\nUygulama kilitlenirse sorunu teşhis etmeye yardımcı olmak için teknik bir rapor göndermeyi seçebilirsiniz. Rapor yığın izlemesi, uygulama sürümü, kilitlenme zamanı, paket adı, Android sürümü, telefon modeli, logcat ve kullanılabilir belleği içerir. PDF belgelerinizi içermez ve onayınız olmadan asla gönderilmez.\n\nİzinler:\n- İnternet: bağlantılardan PDF açmak ve kilitlenme raporlarını yalnızca onayınızla göndermek\n- Depolama / Tüm dosyalara erişim: cihaz ve çıkarılabilir depolamadaki PDF\'leri bulmak, açmak, yeniden adlandırmak, silmek ve yönetmek</string>
     <string name="switch_theme">PDF Temasını Değiştir</string>
     <string name="switch_to_light_mode">Açık Mod</string>
     <string name="switch_to_dark_mode">Koyu Mod</string>

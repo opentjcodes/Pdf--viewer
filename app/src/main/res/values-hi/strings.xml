@@ -12,8 +12,8 @@
     <string name="myLicense">लाइसेंस</string>
     <string name="intro_welcome_title">MJ PDF में आपका स्वागत है</string>
     <string name="intro_welcome_tagline">एक तेज़, सरल और शक्तिशाली PDF रीडर</string>
-    <string name="intro_welcome_privacy">निजी। आपके डिवाइस से कुछ भी बाहर नहीं जाता।</string>
-    <string name="intro_welcome_clean">कोई विज्ञापन नहीं। कोई टेलीमेट्री नहीं। कोई खाता नहीं।</string>
+    <string name="intro_welcome_privacy">निजी। आपका डेटा आपके डिवाइस पर रहता है।</string>
+    <string name="intro_welcome_clean">कोई विज्ञापन नहीं। कोई ट्रैकिंग नहीं। कोई खाता नहीं।</string>
     <string name="intro_welcome_foss">निःशुल्क और ओपन सोर्स।</string>
     <string name="intro_made_by"><a href="https://mudlej.com">Mudlej</a> द्वारा निर्मित</string>
     <string name="intro_library_title">आपकी सभी PDF एक ही जगह</string>
@@ -165,7 +165,7 @@
     <string name="features_topic_privacy">गोपनीयता और डेटा</string>
     <string name="features_topic_privacy_subtitle">गुप्त मोड, इतिहास, पासवर्ड और बैकअप</string>
     <string name="features_privacy_local_title">सब कुछ आपके डिवाइस पर रहता है</string>
-    <string name="features_privacy_local_body">कोई विज्ञापन नहीं, कोई टेलीमेट्री नहीं, कोई खाता नहीं।\nनेटवर्क का इस्तेमाल केवल उन PDF के लिए होता है जिन्हें आप ऐप से डाउनलोड करने के लिए कहते हैं।</string>
+    <string name="features_privacy_local_body">कोई विज्ञापन नहीं, कोई ट्रैकिंग नहीं, कोई खाता नहीं।\nनेटवर्क का उपयोग केवल आपके अनुरोध पर ऑनलाइन PDF खोलने और आपकी स्पष्ट अनुमति पर क्रैश रिपोर्ट भेजने के लिए किया जाता है।</string>
     <string name="features_privacy_incognito_title">गुप्त मोड</string>
     <string name="features_privacy_incognito_body">दस्तावेज़ खोलें और कुछ भी दर्ज नहीं होता: कोई इतिहास नहीं, कोई स्थिति नहीं, कोई पासवर्ड नहीं, कोई प्रति दस्तावेज़ सेटिंग्स नहीं।\nइसे रीडर मेनू, होम ओपन बटन पर लंबे समय तक दबाने, किसी किताब के विकल्पों, या सेटिंग्स से एक्सेस करें।</string>
     <string name="features_privacy_shared_copies_title">साझा की गई फ़ाइलों की प्रतियां</string>
@@ -393,7 +393,7 @@
     <string name="keep_screen_on">स्क्रीन को चालू रखें</string>
     <string name="keep_screen_on_summary">पढ़ते समय स्क्रीन को सोने से रोकें।</string>
     <string name="space_between_pages">पृष्ठों के बीच स्थान</string>
-    <string name="privacy_info">यह ऐप कोई डेटा इकट्ठा नहीं करता है।\nनिम्नलिखित अनुमतियाँ ऐप में विशिष्ट सुविधाएँ प्रदान करने के लिए आवश्यक हैं:\n- <b>इंटरनेट</b>: लिंक के माध्यम से पीडीएफ खोलें\n- <b>स्टोरेज</b>: स्टोरेज से फाइलें खोलें, लिंक के माध्यम से खोली गई पीडीएफ सहेजें</string>
+    <string name="privacy_info">आपकी PDF और पढ़ने का डेटा आपके डिवाइस पर रहता है। MJ PDF में किसी भी प्रकार के विज्ञापन या ट्रैकिंग नहीं है।\n\nयदि ऐप क्रैश हो जाता है, तो आप समस्या का पता लगाने में सहायता के लिए तकनीकी रिपोर्ट भेजना चुन सकते हैं। रिपोर्ट में स्टैक ट्रेस, ऐप संस्करण, क्रैश का समय, पैकेज नाम, Android संस्करण, फोन मॉडल, logcat और उपलब्ध मेमोरी शामिल होती है। इसमें आपके PDF दस्तावेज़ शामिल नहीं होते और आपकी अनुमति के बिना इसे कभी नहीं भेजा जाता।\n\nअनुमतियाँ:\n- इंटरनेट: लिंक से PDF खोलना और केवल आपकी अनुमति पर क्रैश रिपोर्ट भेजना\n- स्टोरेज / सभी फाइलों तक पहुंच: डिवाइस और हटाने योग्य स्टोरेज में PDF खोजना, खोलना, नाम बदलना, हटाना और प्रबंधित करना</string>
     <string name="switch_theme">पीडीएफ थीम टॉगल करें</string>
     <string name="switch_to_light_mode">लाइट मोड</string>
     <string name="switch_to_dark_mode">डार्क मोड</string>

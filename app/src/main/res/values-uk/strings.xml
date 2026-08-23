@@ -12,8 +12,8 @@
     <string name="myLicense">Ліцензія</string>
     <string name="intro_welcome_title">Ласкаво просимо до MJ PDF</string>
     <string name="intro_welcome_tagline">Швидка, проста й потужна читалка PDF</string>
-    <string name="intro_welcome_privacy">Приватно. Нічого не залишає ваш пристрій.</string>
-    <string name="intro_welcome_clean">Без реклами. Без телеметрії. Без облікових записів.</string>
+    <string name="intro_welcome_privacy">Приватно. Ваші дані залишаються на вашому пристрої.</string>
+    <string name="intro_welcome_clean">Без реклами. Без відстеження. Без облікових записів.</string>
     <string name="intro_welcome_foss">Безкоштовна та з відкритим кодом.</string>
     <string name="intro_made_by">Створено <a href="https://mudlej.com">Mudlej</a></string>
     <string name="intro_library_title">Усі ваші PDF в одному місці</string>
@@ -165,7 +165,7 @@
     <string name="features_topic_privacy">Приватність і дані</string>
     <string name="features_topic_privacy_subtitle">Інкогніто, історія, паролі й резервні копії</string>
     <string name="features_privacy_local_title">Усе залишається на вашому пристрої</string>
-    <string name="features_privacy_local_body">Без реклами, без телеметрії, без облікових записів.\nМережа використовується лише для PDF, які ви просите застосунок завантажити.</string>
+    <string name="features_privacy_local_body">Без реклами, без відстеження, без облікових записів.\nМережа використовується лише для відкриття запитаних вами PDF онлайн і надсилання звітів про збої лише за вашою явною згодою.</string>
     <string name="features_privacy_incognito_title">Режим інкогніто</string>
     <string name="features_privacy_incognito_body">Відкрийте документ, і нічого не записується: ні історія, ні позиція, ні пароль, ні налаштування для окремого документа.\nДоступ із меню читалки, довгим натисканням на кнопку відкриття на домівці, з параметрів книги або з налаштувань.</string>
     <string name="features_privacy_shared_copies_title">Копії надісланих файлів</string>
@@ -393,7 +393,7 @@
     <string name="keep_screen_on">Не вимикати екран</string>
     <string name="keep_screen_on_summary">Забороняє вимикання екрана під час читання.</string>
     <string name="space_between_pages">Відступ між сторінками</string>
-    <string name="privacy_info">Цей застосунок не збирає жодних даних.\nДля роботи певних функцій застосунку потрібні такі дозволи:\n- <b>Інтернет</b>: відкриття PDF-файлів за посиланнями\n- <b>Пам’ять</b>: відкриття файлів зі сховища, збереження PDF-файлів, відкритих за посиланнями</string>
+    <string name="privacy_info">Ваші PDF і дані читання залишаються на вашому пристрої. MJ PDF не містить реклами чи будь-якого відстеження.\n\nЯкщо застосунок аварійно завершує роботу, ви можете надіслати технічний звіт, щоб допомогти діагностувати проблему. Звіт містить трасування стека, версію застосунку, час збою, назву пакета, версію Android, модель телефону, logcat і доступну пам’ять. Він не містить ваші PDF-документи й ніколи не надсилається без вашої згоди.\n\nДозволи:\n- Інтернет: відкривати PDF за посиланнями та надсилати звіти про збої лише з вашого дозволу\n- Сховище / Доступ до всіх файлів: знаходити, відкривати, перейменовувати, видаляти й керувати PDF у сховищі пристрою та на знімних носіях</string>
     <string name="switch_theme">Змінити тему PDF</string>
     <string name="switch_to_light_mode">Світлий режим</string>
     <string name="switch_to_dark_mode">Темний режим</string>

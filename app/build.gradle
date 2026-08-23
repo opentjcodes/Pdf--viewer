@@ -79,7 +79,9 @@ android {
 
     splits {
         abi {
-            enable gradle.startParameter.taskNames.any { it.toLowerCase(Locale.ROOT).contains('release') }
+            enable gradle.startParameter.taskNames.any {
+                it.toLowerCase(Locale.ROOT).endsWith('assemblerelease')
+            }
             reset()
             if (fdroidAbi != null) {
                 include fdroidAbi

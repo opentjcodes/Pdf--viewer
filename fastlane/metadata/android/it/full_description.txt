@@ -15,11 +15,14 @@
 
 <b>Autorizzazioni e privacy</b>
 
-Questa applicazione non raccoglie dati.
-Le seguenti autorizzazioni sono necessarie per fornire funzioni specifiche dell'app:
+I tuoi PDF e i dati di lettura restano sul tuo dispositivo. MJ PDF non contiene pubblicità né tracciamento di alcun tipo.
 
-* Internet: per aprire i PDF tramite link
-* Archiviazione: per salvare e scaricare i PDF e aprirli dall'archivio
+Se l'app si arresta in modo anomalo, puoi scegliere di inviare un rapporto tecnico per aiutare a diagnosticare il problema. Il rapporto contiene traccia dello stack, versione dell'app, ora dell'arresto, nome del pacchetto, versione di Android, modello del telefono, logcat e memoria disponibile. Non include i tuoi documenti PDF e non viene mai inviato senza la tua approvazione.
+
+Le seguenti autorizzazioni sono necessarie per fornire funzioni specifiche:
+
+* Internet: aprire PDF dai link e inviare segnalazioni di arresto anomalo solo con la tua approvazione.
+* Archiviazione / accesso a tutti i file: trovare, aprire, rinominare, eliminare e gestire PDF nella memoria del dispositivo e rimovibile.
 
 <b>Autore e riconoscimenti</b>
 
