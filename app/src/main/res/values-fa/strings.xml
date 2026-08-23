@@ -12,7 +12,7 @@
     <string name="myLicense">مجوز</string>
     <string name="intro_welcome_title">به MJ PDF خوش آمدید</string>
     <string name="intro_welcome_tagline">یک نمایشگر PDF سریع، ساده و قدرتمند</string>
-    <string name="intro_welcome_privacy">خصوصی. هیچ چیز از دستگاه شما خارج نمی‌شود.</string>
+    <string name="intro_welcome_privacy">خصوصی. داده‌های شما روی دستگاهتان می‌مانند.</string>
     <string name="intro_welcome_clean">بدون تبلیغ. بدون ردیابی. بدون حساب کاربری.</string>
     <string name="intro_welcome_foss">رایگان و متن‌باز.</string>
     <string name="intro_made_by">ساخته شده توسط <a href="https://mudlej.com">Mudlej</a></string>
@@ -165,7 +165,7 @@
     <string name="features_topic_privacy">حریم خصوصی و داده‌ها</string>
     <string name="features_topic_privacy_subtitle">ناشناس، تاریخچه، گذرواژه‌ها و پشتیبان‌گیری</string>
     <string name="features_privacy_local_title">همه چیز روی دستگاه شما می‌ماند</string>
-    <string name="features_privacy_local_body">بدون تبلیغ، بدون ردیابی، بدون حساب کاربری.\nشبکه تنها برای PDFهایی که از برنامه می‌خواهید دریافت کند استفاده می‌شود.</string>
+    <string name="features_privacy_local_body">بدون تبلیغ، بدون ردیابی، بدون حساب کاربری.\nشبکه فقط برای باز کردن PDFهای آنلاین درخواستی شما و ارسال گزارش خرابی در صورت تأیید صریح شما استفاده می‌شود.</string>
     <string name="features_privacy_incognito_title">حالت ناشناس</string>
     <string name="features_privacy_incognito_body">سندی را باز کنید و هیچ‌چیز ثبت نمی‌شود: بدون تاریخچه، بدون موقعیت، بدون گذرواژه، بدون تنظیمات مخصوص سند.\nاز منوی خواننده، فشار طولانی روی دکمه باز کردن خانه، گزینه‌های یک کتاب، یا تنظیمات به آن دسترسی پیدا کنید.</string>
     <string name="features_privacy_shared_copies_title">نسخه‌های پرونده‌های اشتراکی</string>
@@ -393,7 +393,7 @@
     <string name="keep_screen_on">صفحه‌نمایش روشن بماند</string>
     <string name="keep_screen_on_summary">از خاموش شدن صفحه‌نمایش هنگام خواندن جلوگیری کنید.</string>
     <string name="space_between_pages">فاصله بین صفحات</string>
-    <string name="privacy_info">این برنامه هیچ داده‌ای جمع‌آوری نمی‌کند.\nمجوزهای زیر برای ارائه ویژگی‌های خاص در برنامه لازم‌اند:\n- <b>اینترنت</b>: باز کردن PDF از طریق پیوندها\n- <b>فضای ذخیره‌سازی</b>: باز کردن پرونده‌ها از فضای ذخیره‌سازی، ذخیره PDFهایی که با پیوندها باز می‌شوند</string>
+    <string name="privacy_info">PDFها و داده‌های مطالعه شما روی دستگاهتان می‌مانند. MJ PDF هیچ تبلیغ یا ردیابی‌ای ندارد.\n\nاگر برنامه خراب شود، می‌توانید برای کمک به تشخیص مشکل یک گزارش فنی ارسال کنید. گزارش شامل رد پشته، نسخه برنامه، زمان خرابی، نام بسته، نسخه Android، مدل تلفن، logcat و حافظه در دسترس است. این گزارش شامل اسناد PDF شما نیست و هرگز بدون تأیید شما ارسال نمی‌شود.\n\nمجوزها:\n- اینترنت: باز کردن PDF از پیوندها و ارسال گزارش خرابی فقط در صورت تأیید شما\n- فضای ذخیره‌سازی / دسترسی به همه فایل‌ها: یافتن، باز کردن، تغییر نام، حذف و مدیریت PDFها در فضای ذخیره‌سازی دستگاه و حافظه قابل‌حمل</string>
     <string name="switch_theme">تغییر پوسته PDF</string>
     <string name="switch_to_light_mode">حالت روشن</string>
     <string name="switch_to_dark_mode">حالت تیره</string>

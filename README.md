@@ -102,12 +102,13 @@ The full list is in the [changelog](change_log.md). Coming from 2.x? See what 3.
 - Shared files can be kept as private copies so they reopen reliably: always, or ask each time.
 
 ## Permissions and privacy
-This app does not collect any data.
-The following permissions are required to provide specific features in the app:
-* *Internet*: For opening PDFs through links
-* *Storage / all-files access*: For scanning, opening, and managing the PDFs on your device
+Your data stay on your device. MJ PDF has no ads or tracking of any kind.
 
-Exodus privacy reports a tracker in MJ PDF. That is ACRA, the crash reporter, and it does **NOT** send anything unless you explicitly press SEND on the dialog that appears after a crash. Its configuration is [in the code](app/src/main/java/com/gitlab/mudlej/MjPdfReader/App.kt), and there is more detail in the [FAQ](https://mudlej.com/projects/mj-pdf#faq).
+If the app crashes, you can choose to send a technical report to help diagnose it. The report contains a stack trace, app version, crash time, package name, Android version, phone model, logcat, and available memory. It does not include your PDF documents and is **NEVER** sent without your approval.
+
+Permissions:
+- **Internet**: open PDFs from links and send crash reports only if you approve
+- **All files access**: discover, open, rename, delete, and manage PDFs across device and removable storage
 
 ## How to build
 ```sh

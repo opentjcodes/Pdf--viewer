@@ -12,8 +12,8 @@
     <string name="myLicense">许可证</string>
     <string name="intro_welcome_title">欢迎使用 MJ PDF</string>
     <string name="intro_welcome_tagline">快速、简单且强大的 PDF 阅读器</string>
-    <string name="intro_welcome_privacy">私密安全，任何数据都不会离开您的设备。</string>
-    <string name="intro_welcome_clean">无广告、无遥测、无需注册账户。</string>
+    <string name="intro_welcome_privacy">私密安全。您的数据保留在您的设备上。</string>
+    <string name="intro_welcome_clean">无广告。无跟踪。无需账户。</string>
     <string name="intro_welcome_foss">免费且开放源代码。</string>
     <string name="intro_made_by">由 <a href="https://mudlej.com">Mudlej</a> 制作</string>
     <string name="intro_library_title">所有 PDF 文档尽在一处</string>
@@ -165,7 +165,7 @@
     <string name="features_topic_privacy">隐私与数据</string>
     <string name="features_topic_privacy_subtitle">无痕模式、历史记录、密码和备份</string>
     <string name="features_privacy_local_title">一切数据都留在您的设备上</string>
-    <string name="features_privacy_local_body">无广告、无遥测、无需注册账户。\n仅在您要求应用下载 PDF 时才会使用网络。</string>
+    <string name="features_privacy_local_body">无广告、无跟踪、无需账户。\n网络仅用于打开您请求的在线 PDF，以及仅在您明确同意时发送崩溃报告。</string>
     <string name="features_privacy_incognito_title">无痕模式</string>
     <string name="features_privacy_incognito_body">打开文档后不会记录任何内容：无历史记录、无位置、无密码、无按文档单独设置。\n可从阅读器菜单、长按主页打开按钮、书籍选项或设置中进入。</string>
     <string name="features_privacy_shared_copies_title">共享文件副本</string>
@@ -393,7 +393,7 @@
     <string name="keep_screen_on">保持屏幕开启</string>
     <string name="keep_screen_on_summary">阅读时防止屏幕自动熄灭。</string>
     <string name="space_between_pages">页面之间的空白</string>
-    <string name="privacy_info">此应用不会收集任何数据。\n为提供特定功能，需要以下权限：\n- <b>网络</b>：通过链接打开 PDF 文档\n- <b>存储</b>：从存储中打开文档，保存通过链接打开的 PDF 文档</string>
+    <string name="privacy_info">您的 PDF 和阅读数据保留在您的设备上。MJ PDF 没有广告，也不进行任何形式的跟踪。\n\n如果应用崩溃，您可以选择发送技术报告以帮助诊断问题。报告包含堆栈跟踪、应用版本、崩溃时间、软件包名称、Android 版本、手机型号、logcat 和可用内存。报告不包含您的 PDF 文档，未经您的同意绝不会发送。\n\n权限：\n- 网络：通过链接打开 PDF，并且仅在您同意时发送崩溃报告\n- 存储 / 所有文件访问权限：发现、打开、重命名、删除和管理设备及可移动存储中的 PDF</string>
     <string name="switch_theme">切换 PDF 主题</string>
     <string name="switch_to_light_mode">浅色模式</string>
     <string name="switch_to_dark_mode">深色模式</string>
