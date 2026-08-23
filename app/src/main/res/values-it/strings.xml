@@ -12,8 +12,8 @@
     <string name="myLicense">Licenza</string>
     <string name="intro_welcome_title">Benvenuto in MJ PDF</string>
     <string name="intro_welcome_tagline">Un lettore PDF veloce, semplice e potente</string>
-    <string name="intro_welcome_privacy">Privato. Niente lascia il tuo dispositivo.</string>
-    <string name="intro_welcome_clean">Nessuna pubblicità. Nessuna telemetria. Nessun account.</string>
+    <string name="intro_welcome_privacy">Privato. I tuoi dati restano sul tuo dispositivo.</string>
+    <string name="intro_welcome_clean">Nessuna pubblicità. Nessun tracciamento. Nessun account.</string>
     <string name="intro_welcome_foss">Gratuito e open source.</string>
     <string name="intro_made_by">Realizzato da <a href="https://mudlej.com">Mudlej</a></string>
     <string name="intro_library_title">Tutti i tuoi PDF in un unico posto</string>
@@ -165,7 +165,7 @@
     <string name="features_topic_privacy">Privacy e dati</string>
     <string name="features_topic_privacy_subtitle">Incognito, cronologia, password e backup</string>
     <string name="features_privacy_local_title">Tutto resta sul tuo dispositivo</string>
-    <string name="features_privacy_local_body">Nessuna pubblicità, nessuna telemetria, nessun account.\nLa rete viene usata solo per i PDF che chiedi all\'app di scaricare.</string>
+    <string name="features_privacy_local_body">Nessuna pubblicità, nessun tracciamento, nessun account.\nLa rete viene usata solo per aprire i PDF online che richiedi e inviare segnalazioni di arresto anomalo solo con la tua approvazione esplicita.</string>
     <string name="features_privacy_incognito_title">Modalità in incognito</string>
     <string name="features_privacy_incognito_body">Apri un documento e nulla viene registrato: nessuna cronologia, nessuna posizione, nessuna password, nessuna impostazione per singolo documento.\nRaggiungila dal menu del lettore, con una pressione prolungata sul pulsante apri della home, dalle opzioni di un libro, o dalle impostazioni.</string>
     <string name="features_privacy_shared_copies_title">Copie dei file condivisi</string>
@@ -393,7 +393,7 @@
     <string name="keep_screen_on">Mantieni lo schermo acceso</string>
     <string name="keep_screen_on_summary">Impedisci allo schermo di spegnersi durante la lettura.</string>
     <string name="space_between_pages">Spazio tra le pagine</string>
-    <string name="privacy_info">Quest\'app non raccoglie alcun dato.\nLe seguenti autorizzazioni sono necessarie per fornire funzioni specifiche all\'interno dell\'app:\n- <b>Internet</b>: aprire i PDF tramite link\n- <b>Archiviazione</b>: aprire i file dall\'archivio, salvare i PDF aperti tramite link</string>
+    <string name="privacy_info">I tuoi PDF e i dati di lettura restano sul tuo dispositivo. MJ PDF non contiene pubblicità né tracciamento di alcun tipo.\n\nSe l\'app si arresta in modo anomalo, puoi scegliere di inviare un rapporto tecnico per aiutare a diagnosticare il problema. Il rapporto contiene traccia dello stack, versione dell\'app, ora dell\'arresto, nome del pacchetto, versione di Android, modello del telefono, logcat e memoria disponibile. Non include i tuoi documenti PDF e non viene mai inviato senza la tua approvazione.\n\nAutorizzazioni:\n- Internet: aprire PDF dai link e inviare segnalazioni di arresto anomalo solo con la tua approvazione\n- Archiviazione / Accesso a tutti i file: trovare, aprire, rinominare, eliminare e gestire PDF nella memoria del dispositivo e rimovibile</string>
     <string name="switch_theme">Cambia il tema del PDF</string>
     <string name="switch_to_light_mode">Modalità chiara</string>
     <string name="switch_to_dark_mode">Modalità scura</string>

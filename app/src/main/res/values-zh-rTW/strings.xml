@@ -12,8 +12,8 @@
     <string name="myLicense">授權</string>
     <string name="intro_welcome_title">歡迎使用 MJ PDF</string>
     <string name="intro_welcome_tagline">快速、簡單又強大的 PDF 閱讀器</string>
-    <string name="intro_welcome_privacy">隱私至上。所有資料不離開您的裝置。</string>
-    <string name="intro_welcome_clean">沒有廣告。沒有遙測。不需要帳號。</string>
+    <string name="intro_welcome_privacy">隱私安全。您的資料保留在您的裝置上。</string>
+    <string name="intro_welcome_clean">沒有廣告。沒有追蹤。不需要帳號。</string>
     <string name="intro_welcome_foss">免費且開放原始碼。</string>
     <string name="intro_made_by">由 <a href="https://mudlej.com">Mudlej</a> 製作</string>
     <string name="intro_library_title">所有 PDF 集中一處</string>
@@ -165,7 +165,7 @@
     <string name="features_topic_privacy">隱私與資料</string>
     <string name="features_topic_privacy_subtitle">無痕模式、記錄、密碼與備份</string>
     <string name="features_privacy_local_title">一切都保留在您的裝置上</string>
-    <string name="features_privacy_local_body">沒有廣告、沒有遙測、不需要帳號。\n網路連線僅用於您要求應用程式下載的 PDF。</string>
+    <string name="features_privacy_local_body">沒有廣告、沒有追蹤、不需要帳號。\n網路僅用於開啟您要求的線上 PDF，以及僅在您明確同意時傳送當機報告。</string>
     <string name="features_privacy_incognito_title">無痕模式</string>
     <string name="features_privacy_incognito_body">開啟文件時不會記錄任何內容：沒有記錄、位置、密碼，也沒有個別文件設定。\n可從閱讀器選單、長按首頁的開啟按鈕、書籍選項或設定中進入。</string>
     <string name="features_privacy_shared_copies_title">分享的檔案副本</string>
@@ -393,7 +393,7 @@
     <string name="keep_screen_on">保持螢幕開啟</string>
     <string name="keep_screen_on_summary">閱讀時防止螢幕進入睡眠狀態。</string>
     <string name="space_between_pages">頁面之間的空間</string>
-    <string name="privacy_info">此應用程式不會收集任何資料。\n為提供特定功能，需要以下權限：\n- <b>網際網路</b>：通過連結打開 PDF\n- <b>儲存</b>：從儲存區打開檔案，保存通過連結打開的 PDF</string>
+    <string name="privacy_info">您的 PDF 和閱讀資料保留在您的裝置上。MJ PDF 沒有廣告，也不進行任何形式的追蹤。\n\n如果應用程式當機，您可以選擇傳送技術報告以協助診斷問題。報告包含堆疊追蹤、應用程式版本、當機時間、套件名稱、Android 版本、手機型號、logcat 和可用記憶體。報告不包含您的 PDF 文件，未經您的同意絕不會傳送。\n\n權限：\n- 網際網路：透過連結開啟 PDF，並且僅在您同意時傳送當機報告\n- 儲存空間 / 所有檔案存取權：探索、開啟、重新命名、刪除和管理裝置及可移除儲存空間中的 PDF</string>
     <string name="switch_theme">切換 PDF 主題</string>
     <string name="switch_to_light_mode">淺色模式</string>
     <string name="switch_to_dark_mode">深色模式</string>

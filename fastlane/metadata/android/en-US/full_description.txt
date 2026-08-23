@@ -28,11 +28,14 @@
 
 <b>Permissions and privacy</b>
 
-This app does not collect any data.
-The following permissions are required to provide specific features in the app:
+Your PDFs and reading data stay on your device. MJ PDF has no ads or tracking of any kind.
 
-* Internet: for opening PDFs through links.
-* Storage / all-files access: to scan, open and manage the PDFs on your device.
+If the app crashes, you can choose to send a technical report to help diagnose it. The report contains a stack trace, app version, crash time, package name, Android version, phone model, logcat, and available memory. It does not include your PDF documents and is never sent without your approval.
+
+The following permissions are required to provide specific features:
+
+* Internet: open PDFs from links and send crash reports only if you approve.
+* Storage / all-files access: discover, open, rename, delete, and manage PDFs across device and removable storage.
 
 <b>Links</b>
 

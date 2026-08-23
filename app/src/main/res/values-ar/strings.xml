@@ -12,7 +12,7 @@
     <string name="myLicense">الترخيص</string>
     <string name="intro_welcome_title">مرحبًا بك في MJ PDF</string>
     <string name="intro_welcome_tagline">قارئ PDF سريع وبسيط وقوي</string>
-    <string name="intro_welcome_privacy">خاص. لا تغادر أي بيانات جهازك.</string>
+    <string name="intro_welcome_privacy">خاص. تبقى بياناتك على جهازك.</string>
     <string name="intro_welcome_clean">بلا إعلانات. بلا تتبع. بلا حسابات.</string>
     <string name="intro_welcome_foss">مجاني ومفتوح المصدر.</string>
     <string name="intro_made_by">بواسطة <a href="https://mudlej.com">Mudlej</a></string>
@@ -165,7 +165,7 @@
     <string name="features_topic_privacy">الخصوصية والبيانات</string>
     <string name="features_topic_privacy_subtitle">الوضع الخفي، السجل، كلمات المرور والنسخ الاحتياطي</string>
     <string name="features_privacy_local_title">كل شيء يبقى على جهازك</string>
-    <string name="features_privacy_local_body">بلا إعلانات، بلا تتبع، بلا حسابات.\nتُستخدم الشبكة فقط لملفات PDF التي تطلب من التطبيق تحميلها.</string>
+    <string name="features_privacy_local_body">بلا إعلانات، بلا تتبع، بلا حسابات.\nتُستخدم الشبكة فقط لفتح ملفات PDF عبر الإنترنت التي تطلبها وإرسال تقارير الأعطال فقط إذا وافقت عليها صراحةً.</string>
     <string name="features_privacy_incognito_title">الوضع الخفي</string>
     <string name="features_privacy_incognito_body">افتح مستندًا ولن يُسجَّل شيء: لا سجل، لا موضع، لا كلمة مرور، ولا إعدادات خاصة بالمستند.\nصِل إليه من قائمة القارئ، أو بالضغط المطول على زر فتح الرئيسية، أو خيارات كتاب، أو الإعدادات.</string>
     <string name="features_privacy_shared_copies_title">نسخ الملفات المشتركة</string>
@@ -393,7 +393,7 @@
     <string name="keep_screen_on">إبقاء الشاشة مضاءة</string>
     <string name="keep_screen_on_summary">منع الشاشة من النوم أثناء القراءة.</string>
     <string name="space_between_pages">وضع مسافة فارغة بين الصفحات</string>
-    <string name="privacy_info">هذا التطبيق لا يجمع أي بيانات.\nالأذونات التالية مطلوبة لتوفير ميزات معينة في التطبيق:\n- <b>الإنترنت</b>: فتح PDFs عبر الروابط\n- <b>التخزين</b>: فتح الملفات من التخزين، حفظ PDFs التي تم فتحها عبر الروابط</string>
+    <string name="privacy_info">تبقى ملفات PDF وبيانات القراءة الخاصة بك على جهازك. لا يحتوي MJ PDF على إعلانات أو أي نوع من التتبع.\n\nإذا تعطل التطبيق، يمكنك اختيار إرسال تقرير تقني للمساعدة في تشخيص المشكلة. يحتوي التقرير على تتبع المكدس، وإصدار التطبيق، ووقت التعطل، واسم الحزمة، وإصدار Android، وطراز الهاتف، وسجل logcat، والذاكرة المتاحة. لا يتضمن مستندات PDF الخاصة بك ولا يُرسل أبدًا دون موافقتك.\n\nالأذونات:\n- الإنترنت: فتح ملفات PDF من الروابط وإرسال تقارير الأعطال فقط إذا وافقت\n- التخزين / الوصول إلى جميع الملفات: اكتشاف ملفات PDF وفتحها وإعادة تسميتها وحذفها وإدارتها عبر مساحة تخزين الجهاز والتخزين القابل للإزالة</string>
     <string name="switch_theme">تغيير ثيم الصفحات</string>
     <string name="switch_to_light_mode">الوضع الفاتح</string>
     <string name="switch_to_dark_mode">الوضع الداكن</string>
