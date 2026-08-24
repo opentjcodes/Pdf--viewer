@@ -41,6 +41,7 @@
     <string name="privacy">隐私政策</string>
     <string name="whats_new_title">新功能</string>
     <string name="whats_new_intro">一次专注于正确性与稳定性的更新。新增阅读选项，保存更加安全，并修复了应用各处的大量问题。</string>
+    <string name="whats_new_v3_intro">迄今为止最大的一次更新。全新的主页、批注工具，以及几乎应用中每个部分的重新设计。</string>
     <string name="whats_new_section_reading">阅读</string>
     <string name="whats_new_section_performance">性能与修复</string>
     <string name="features_title">应用功能</string>

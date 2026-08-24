@@ -41,6 +41,7 @@
     <string name="privacy">隱私政策</string>
     <string name="whats_new_title">全新功能</string>
     <string name="whats_new_intro">一次著重正確性與穩定性的更新。新增閱讀選項，儲存更加安全，並修正了整個應用程式中大量的問題。</string>
+    <string name="whats_new_v3_intro">至今最大的一次更新。全新首頁畫面、標註工具，幾乎重寫了應用程式的每個部分。</string>
     <string name="whats_new_section_reading">閱讀</string>
     <string name="whats_new_section_performance">效能與修正</string>
     <string name="features_title">應用程式功能</string>

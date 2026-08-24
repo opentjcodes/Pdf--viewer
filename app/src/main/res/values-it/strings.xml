@@ -41,6 +41,7 @@
     <string name="privacy">Politica sulla privacy</string>
     <string name="whats_new_title">Novità</string>
     <string name="whats_new_intro">Un aggiornamento dedicato a correttezza e stabilità. Nuove opzioni di lettura, un salvataggio molto più sicuro e un lungo elenco di correzioni in tutta l\'app.</string>
+    <string name="whats_new_v3_intro">L\'aggiornamento più grande finora. Una nuova schermata home, strumenti di annotazione e una revisione di quasi ogni parte dell\'app.</string>
     <string name="whats_new_section_reading">Lettura</string>
     <string name="whats_new_section_performance">Prestazioni e correzioni</string>
     <string name="features_title">Funzionalità dell\'app</string>
