@@ -24,8 +24,6 @@
 <a href="https://gitlab.com/mudlej_android/mj_pdf_reader"><img src="assets/buttons/gitlab.png" height="60" alt="Source code on GitLab"/></a>
 <a href="https://github.com/mudlej/mj_pdf/"><img src="assets/buttons/github.png" height="60" alt="GitHub mirror"/></a>
 
-<sub>Now available on Google Play and the main F-Droid repository.</sub>
-
 </div>
 
 ## Screenshots
