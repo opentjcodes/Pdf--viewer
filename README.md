@@ -17,12 +17,14 @@
 
 <br/>
 
+<a href="https://play.google.com/store/apps/details?id=com.gitlab.mudlej.MjPdfReader"><img src="assets/buttons/google_play.png" height="60" alt="Get it on Google Play"/></a>
+<a href="https://f-droid.org/packages/com.gitlab.mudlej.MjPdfReader/"><img src="assets/buttons/fdroid.png" height="60" alt="Get it on F-Droid"/></a>
 <a href="https://apt.izzysoft.de/fdroid/index/apk/com.gitlab.mudlej.MjPdfReader"><img src="assets/buttons/izzy.png" height="60" alt="Get it on IzzyOnDroid"/></a>
 <a href="https://mudlej.com/mj-pdf.apk"><img src="assets/buttons/direct_apk.png" height="60" alt="Direct APK download"/></a>
 <a href="https://gitlab.com/mudlej_android/mj_pdf_reader"><img src="assets/buttons/gitlab.png" height="60" alt="Source code on GitLab"/></a>
 <a href="https://github.com/mudlej/mj_pdf/"><img src="assets/buttons/github.png" height="60" alt="GitHub mirror"/></a>
 
-<sub>F-Droid main repo and Play Store are not available for now, see the <a href="https://mudlej.com/projects/mj-pdf#faq">FAQ</a>.</sub>
+<sub>Now available on Google Play and the main F-Droid repository.</sub>
 
 </div>
 
