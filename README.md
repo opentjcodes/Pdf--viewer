@@ -7,6 +7,8 @@
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-3.1.0-2ea44f.svg)](change_log.md)
 [![API](https://img.shields.io/badge/API-23%2B-brightgreen.svg)](https://developer.android.com/about/versions/marshmallow)
+[![Google Play](https://img.shields.io/badge/Google_Play-Available-414141?logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=com.gitlab.mudlej.MjPdfReader)
+[![F-Droid](https://img.shields.io/f-droid/v/com.gitlab.mudlej.MjPdfReader?logo=f-droid&label=F-Droid)](https://f-droid.org/packages/com.gitlab.mudlej.MjPdfReader/)
 [![IzzyOnDroid](https://img.shields.io/endpoint?url=https://apt.izzysoft.de/fdroid/api/v1/shield/com.gitlab.mudlej.MjPdfReader)](https://apt.izzysoft.de/fdroid/index/apk/com.gitlab.mudlej.MjPdfReader)
 
 </div>
