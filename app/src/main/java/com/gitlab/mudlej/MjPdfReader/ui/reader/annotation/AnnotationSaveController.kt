@@ -24,6 +24,7 @@ import com.gitlab.mudlej.MjPdfReader.data.entity.PdfRecord
 import com.gitlab.mudlej.MjPdfReader.ui.reader.PostSaveAction
 import com.gitlab.mudlej.MjPdfReader.ui.reader.ReaderViewModel
 import com.gitlab.mudlej.MjPdfReader.core.debug.AnnotationTestHooks
+import com.gitlab.mudlej.MjPdfReader.core.debug.AnnotationTestHooks.SaveFault
 import com.gitlab.mudlej.MjPdfReader.core.ui.AppSnackbar
 import com.gitlab.mudlej.MjPdfReader.core.PermissionManager
 import com.gitlab.mudlej.MjPdfReader.core.io.UriCanonicalizer
@@ -313,6 +314,7 @@ class AnnotationSaveController(
     }
 
     private fun saveHighlightsToUri(destinationUri: Uri, sourceUri: Uri, saveDestinationDurably: Boolean = true) {
+        val fault = AnnotationTestHooks.saveFault(activity)
         clearActiveSearchResultHighlight()
         annotationController.setSaving(true)
         updateDirtyUi()
@@ -324,7 +326,7 @@ class AnnotationSaveController(
             var outcome: SaveOutcome =
                 SaveOutcome.Failure(rescueFileName = null, unconfirmed = false, overwritesSource = overwritesSource)
             try {
-                val writeResult = writeDocumentToSaf(destinationUri)
+                val writeResult = writeDocumentToSaf(destinationUri, fault)
                 if (writeResult is WriteResult.Success) {
                     val destinationName = getFileName(activity, destinationUri)
                     val newHash = writeResult.identity
@@ -440,8 +442,7 @@ class AnnotationSaveController(
         }
     }
 
-    private suspend fun writeDocumentToSaf(destinationUri: Uri): WriteResult = withContext(Dispatchers.IO) {
-        val faultMode = AnnotationTestHooks.saveFaultMode(activity)
+    private suspend fun writeDocumentToSaf(destinationUri: Uri, fault: SaveFault): WriteResult = withContext(Dispatchers.IO) {
         val tmp = File(activity.cacheDir, "annotation-save-${System.currentTimeMillis()}.pdf")
         try {
             if (!runCatching { binding.pdfView.saveAsCopy(tmp) }.getOrDefault(false)) {
@@ -454,9 +455,9 @@ class AnnotationSaveController(
             val tailHash = computeTailHash(tmp)
                 ?: return@withContext WriteResult.Failure(rescueFileName = null, unconfirmed = false)
             if (destinationUri.scheme == "file") {
-                writeToFileDestination(destinationUri, tmp, hash, identities.identity, tailHash, sizeBytes, faultMode)
+                writeToFileDestination(destinationUri, tmp, hash, identities.identity, tailHash, sizeBytes, fault)
             } else {
-                writeToContentDestination(destinationUri, tmp, hash, identities.identity, tailHash, sizeBytes, faultMode)
+                writeToContentDestination(destinationUri, tmp, hash, identities.identity, tailHash, sizeBytes, fault)
             }
         } finally {
             tmp.delete()
@@ -470,7 +471,7 @@ class AnnotationSaveController(
         identity: String,
         tailHash: String,
         sizeBytes: Long,
-        faultMode: String,
+        fault: SaveFault,
     ): WriteResult {
         val target = destinationUri.path?.let { File(it) }
         val parent = target?.parentFile
@@ -478,14 +479,15 @@ class AnnotationSaveController(
             return failure(tmp, unconfirmed = false)
         }
         val sibling = File(parent, "${target.name}.saving")
+        AnnotationTestHooks.awaitSaveWrite(fault)
         val wrote = runCatching {
             FileOutputStream(sibling).use { output ->
-                tmp.inputStream().use { input -> AnnotationTestHooks.copySaveBytes(faultMode, input, output) }
+                tmp.inputStream().use { input -> AnnotationTestHooks.copySaveBytes(fault, input, output) }
                 output.fd.sync()
             }
             true
         }.getOrDefault(false)
-        if (!wrote || AnnotationTestHooks.verificationFails(faultMode) ||
+        if (!wrote || AnnotationTestHooks.verificationFails(fault) ||
             sibling.length() != sizeBytes || computeHash(sibling) != hash ||
             computeTailHash(sibling) != tailHash
         ) {
@@ -506,19 +508,19 @@ class AnnotationSaveController(
         identity: String,
         tailHash: String,
         sizeBytes: Long,
-        faultMode: String,
+        fault: SaveFault,
     ): WriteResult {
-        var wrote = attemptContentWrite(destinationUri, tmp, faultMode)
+        var wrote = attemptContentWrite(destinationUri, tmp, fault)
         if (wrote.isFailure) {
-            if (destinationMatches(destinationUri, hash, tailHash, sizeBytes, faultMode)) {
+            if (destinationMatches(destinationUri, hash, tailHash, sizeBytes, fault)) {
                 return WriteResult.Success(hash, identity, sizeBytes)
             }
-            wrote = attemptContentWrite(destinationUri, tmp, faultMode)
+            wrote = attemptContentWrite(destinationUri, tmp, fault)
         }
         if (!wrote.getOrDefault(false)) {
             return failure(tmp, unconfirmed = false)
         }
-        return if (destinationMatches(destinationUri, hash, tailHash, sizeBytes, faultMode)) {
+        return if (destinationMatches(destinationUri, hash, tailHash, sizeBytes, fault)) {
             WriteResult.Success(hash, identity, sizeBytes)
         } else {
             failure(tmp, unconfirmed = true)
@@ -530,9 +532,9 @@ class AnnotationSaveController(
         hash: String,
         tailHash: String,
         sizeBytes: Long,
-        faultMode: String,
+        fault: SaveFault,
     ): Boolean {
-        if (AnnotationTestHooks.verificationFails(faultMode)) {
+        if (AnnotationTestHooks.verificationFails(fault)) {
             return false
         }
         if (!destinationSizeMatches(destinationUri, sizeBytes)) {
@@ -544,10 +546,13 @@ class AnnotationSaveController(
         return runCatching { computeTailHash(activity, destinationUri) }.getOrNull() == tailHash
     }
 
-    private fun attemptContentWrite(destinationUri: Uri, tmp: File, faultMode: String): Result<Boolean> = runCatching {
-        activity.contentResolver.openOutputStream(destinationUri, "wt")?.use { output ->
-            tmp.inputStream().use { input -> AnnotationTestHooks.copySaveBytes(faultMode, input, output) }
-        } != null
+    private fun attemptContentWrite(destinationUri: Uri, tmp: File, fault: SaveFault): Result<Boolean> {
+        AnnotationTestHooks.awaitSaveWrite(fault)
+        return runCatching {
+            activity.contentResolver.openOutputStream(destinationUri, "wt")?.use { output ->
+                tmp.inputStream().use { input -> AnnotationTestHooks.copySaveBytes(fault, input, output) }
+            } != null
+        }
     }
 
     private fun destinationSizeMatches(destinationUri: Uri, expected: Long): Boolean {

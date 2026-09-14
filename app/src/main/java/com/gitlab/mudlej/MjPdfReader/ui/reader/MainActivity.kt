@@ -25,6 +25,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
+import androidx.annotation.MainThread
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
@@ -33,7 +34,6 @@ import androidx.preference.PreferenceManager
 import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
 import com.github.barteksc.pdfviewer.PDFView
-import com.gitlab.mudlej.MjPdfReader.core.debug.AnnotationTestHooks
 import com.gitlab.mudlej.MjPdfReader.core.debug.DebugRootDescription
 import com.gitlab.mudlej.MjPdfReader.core.debug.MainThreadStallWatchdog
 import com.gitlab.mudlej.MjPdfReader.core.debug.ReaderDebugStateSource
@@ -55,6 +55,7 @@ import com.gitlab.mudlej.MjPdfReader.core.ui.clearIncognitoNightMode
 import com.gitlab.mudlej.MjPdfReader.core.ui.showOptionalIcons
 import com.gitlab.mudlej.MjPdfReader.pdf.PDF
 import com.gitlab.mudlej.MjPdfReader.pdf.PdfPropertiesSummary
+import com.gitlab.mudlej.MjPdfReader.ui.reader.annotation.ReaderAnnotationDebug
 import com.gitlab.mudlej.MjPdfReader.ui.reader.load.DocumentUnreachableException
 import com.gitlab.mudlej.MjPdfReader.ui.settings.SettingsActivity
 import com.gitlab.mudlej.MjPdfReader.ui.settings.SettingsPage
@@ -169,9 +170,16 @@ class MainActivity : AppCompatActivity(), ReaderUi {
         binding.pdfView.attachDebugStateSource(
             ReaderDebugStateSource(vm, documentLoader, readerHistory),
         )
-        AnnotationTestHooks.install(binding.pdfView, vm, ::updateDirtyUi)
         DebugRootDescription.attachLayoutDirection(binding.root)
         reader.publishDebugHistory()
+    }
+
+    @MainThread
+    fun annotationDebug(): ReaderAnnotationDebug? {
+        if (!BuildConfig.DEBUG || !::binding.isInitialized || isDestroyed) {
+            return null
+        }
+        return ReaderAnnotationDebug(binding.pdfView, vm, this)
     }
 
     private fun openInitialDocument(savedInstanceState: Bundle?) {
@@ -791,7 +799,6 @@ class MainActivity : AppCompatActivity(), ReaderUi {
 
     override fun onDestroy() {
         if (::reader.isInitialized) {
-            AnnotationTestHooks.uninstall(binding.pdfView)
             reader.autoScrollSpeedStore.flushPendingSave()
             cropMarginsController.cancel()
             reader.inlineAnnotationActionController.hideActions()
