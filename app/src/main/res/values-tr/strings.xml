@@ -546,7 +546,6 @@
     <string name="dracula">Drakula</string>
     <string name="text_size">Metin boyutu</string>
     <string name="go_to_page">Sayfaya Git</string>
-    <string name="no_input">Girdi Yok!</string>
     <string name="go_to">Git</string>
     <string name="all_pages">Tüm Sayfalar</string>
     <string name="grid_columns">Sütunlar</string>
@@ -662,6 +661,7 @@
     <string name="home_scan_locations_save">Kaydet</string>
     <string name="home_scan_locations_up">Yukarı</string>
     <string name="home_menu_scan_locations">Tarama konumları</string>
+    <string name="home_menu_full_rescan">Tam yeniden tarama</string>
     <string name="home_search_hint">Kitaplığınızda arayın</string>
     <string name="home_tab_recent">Son</string>
     <string name="home_tab_library">Kitaplık</string>
@@ -683,7 +683,9 @@
     <string name="home_chip_abandoned">Bırakıldı</string>
     <string name="home_chip_all_files">Tüm Dosyalar</string>
     <string name="home_hero_progress_template">%1$d%% · %2$d/%3$d</string>
-    <string name="home_scanning_progress">Taranıyor… %1$d PDF bulundu</string>
+    <string name="home_scan_finding">PDF\'ler bulunuyor… %1$d bulundu</string>
+    <string name="home_scan_reading_details">PDF ayrıntıları okunuyor… %1$d / %2$d</string>
+    <string name="home_scan_incomplete">Tarama tamamlanmadı… %1$d PDF bulundu</string>
     <string name="home_menu_title">Kitaplık Menüsü</string>
     <string name="home_menu_view">Görünüm</string>
     <string name="home_menu_stats">Kitaplık İstatistikleri</string>
@@ -888,7 +890,7 @@
     <string name="auto_backup_failure_notice">Son otomatik yedekleme başarısız oldu.</string>
     <string name="auto_backup_stale_notice">Otomatik yedekleme bir günden fazla süredir çalışmadı.</string>
     <string name="auto_backup_notice_action">Yedekleme ayarları</string>
-    <string name="home_recent_permission_message">Kitaplarınızın yeniden açılması için dosya erişimi gerekiyor. Onların kilidini açmak için erişime izin verin.</string>
+    <string name="home_recent_permission_message">Bazı son belgeler dosya erişimi olmadan denetlenemez. MJ PDF\'nin hâlâ kullanılabilirlerse bunları denetleyip açabilmesi için erişime izin verin.</string>
     <string name="home_list_badges_title">Liste Kartı Rozetleri</string>
     <string name="home_list_badges_summary">Liste görünümünde dosya adlarının altında hangi ayrıntıların gösterileceğini seçin.</string>
     <string name="home_badge_pages">Sayfa sayısı</string>

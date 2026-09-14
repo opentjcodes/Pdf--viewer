@@ -1,0 +1,313 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 15,
+    "identityHash": "9d6f1a20a9bf165f5e84b1117399b6c1",
+    "entities": [
+      {
+        "tableName": "PdfRecord",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`hash` TEXT NOT NULL, `pageNumber` INTEGER NOT NULL, `uri` TEXT NOT NULL DEFAULT '', `length` INTEGER NOT NULL DEFAULT -1, `fileName` TEXT NOT NULL DEFAULT '', `password` TEXT, `lastOpened` TEXT NOT NULL DEFAULT '-999999999-01-01T00:00', `reading` TEXT NOT NULL DEFAULT 'UNSET', `favorite` INTEGER NOT NULL DEFAULT false, `cropMargins` TEXT DEFAULT NULL, `cropMarginsVersion` INTEGER NOT NULL DEFAULT 0, `autoScrollSpeed` INTEGER DEFAULT NULL, `readingDirectionOverride` TEXT DEFAULT NULL, `detectedReadingDirection` TEXT DEFAULT NULL, `documentTitle` TEXT DEFAULT NULL, `hidden` INTEGER NOT NULL DEFAULT false, `textModeJoinParagraphs` INTEGER DEFAULT NULL, `textModeDetectHeadings` INTEGER DEFAULT NULL, `textModeCodeBlocks` INTEGER DEFAULT NULL, `sourceUri` TEXT DEFAULT NULL, PRIMARY KEY(`hash`))",
+        "fields": [
+          {
+            "fieldPath": "hash",
+            "columnName": "hash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pageNumber",
+            "columnName": "pageNumber",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uri",
+            "columnName": "uri",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "length",
+            "columnName": "length",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "-1"
+          },
+          {
+            "fieldPath": "fileName",
+            "columnName": "fileName",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "password",
+            "columnName": "password",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastOpened",
+            "columnName": "lastOpened",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'-999999999-01-01T00:00'"
+          },
+          {
+            "fieldPath": "reading",
+            "columnName": "reading",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'UNSET'"
+          },
+          {
+            "fieldPath": "favorite",
+            "columnName": "favorite",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "false"
+          },
+          {
+            "fieldPath": "cropMargins",
+            "columnName": "cropMargins",
+            "affinity": "TEXT",
+            "defaultValue": "NULL"
+          },
+          {
+            "fieldPath": "cropMarginsVersion",
+            "columnName": "cropMarginsVersion",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "autoScrollSpeed",
+            "columnName": "autoScrollSpeed",
+            "affinity": "INTEGER",
+            "defaultValue": "NULL"
+          },
+          {
+            "fieldPath": "readingDirectionOverride",
+            "columnName": "readingDirectionOverride",
+            "affinity": "TEXT",
+            "defaultValue": "NULL"
+          },
+          {
+            "fieldPath": "detectedReadingDirection",
+            "columnName": "detectedReadingDirection",
+            "affinity": "TEXT",
+            "defaultValue": "NULL"
+          },
+          {
+            "fieldPath": "documentTitle",
+            "columnName": "documentTitle",
+            "affinity": "TEXT",
+            "defaultValue": "NULL"
+          },
+          {
+            "fieldPath": "hidden",
+            "columnName": "hidden",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "false"
+          },
+          {
+            "fieldPath": "textModeJoinParagraphs",
+            "columnName": "textModeJoinParagraphs",
+            "affinity": "INTEGER",
+            "defaultValue": "NULL"
+          },
+          {
+            "fieldPath": "textModeDetectHeadings",
+            "columnName": "textModeDetectHeadings",
+            "affinity": "INTEGER",
+            "defaultValue": "NULL"
+          },
+          {
+            "fieldPath": "textModeCodeBlocks",
+            "columnName": "textModeCodeBlocks",
+            "affinity": "INTEGER",
+            "defaultValue": "NULL"
+          },
+          {
+            "fieldPath": "sourceUri",
+            "columnName": "sourceUri",
+            "affinity": "TEXT",
+            "defaultValue": "NULL"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "hash"
+          ]
+        }
+      },
+      {
+        "tableName": "PdfAnnotationSaveDestination",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`sourceKey` TEXT NOT NULL, `destinationUri` TEXT NOT NULL, `lastSavedHash` TEXT, `lastSavedAt` TEXT NOT NULL, PRIMARY KEY(`sourceKey`))",
+        "fields": [
+          {
+            "fieldPath": "sourceKey",
+            "columnName": "sourceKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "destinationUri",
+            "columnName": "destinationUri",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSavedHash",
+            "columnName": "lastSavedHash",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastSavedAt",
+            "columnName": "lastSavedAt",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "sourceKey"
+          ]
+        }
+      },
+      {
+        "tableName": "ScannedPdfCache",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`path` TEXT NOT NULL, `size` INTEGER NOT NULL, `lastModified` INTEGER NOT NULL, `hash` TEXT, `pageCount` INTEGER NOT NULL DEFAULT 0, `metadataState` TEXT NOT NULL DEFAULT 'PENDING', `metadataFailure` TEXT, `metadataWorkerDeaths` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`path`))",
+        "fields": [
+          {
+            "fieldPath": "path",
+            "columnName": "path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "size",
+            "columnName": "size",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastModified",
+            "columnName": "lastModified",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hash",
+            "columnName": "hash",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "pageCount",
+            "columnName": "pageCount",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "metadataState",
+            "columnName": "metadataState",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'PENDING'"
+          },
+          {
+            "fieldPath": "metadataFailure",
+            "columnName": "metadataFailure",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "metadataWorkerDeaths",
+            "columnName": "metadataWorkerDeaths",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "path"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_ScannedPdfCache_metadataState",
+            "unique": false,
+            "columnNames": [
+              "metadataState"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_ScannedPdfCache_metadataState` ON `${TABLE_NAME}` (`metadataState`)"
+          }
+        ]
+      },
+      {
+        "tableName": "UserBookmark",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`fileHash` TEXT NOT NULL, `pageIndex` INTEGER NOT NULL, `label` TEXT, `createdAt` TEXT NOT NULL, `sortOrder` INTEGER NOT NULL DEFAULT -1, PRIMARY KEY(`fileHash`, `pageIndex`))",
+        "fields": [
+          {
+            "fieldPath": "fileHash",
+            "columnName": "fileHash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pageIndex",
+            "columnName": "pageIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "label",
+            "columnName": "label",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortOrder",
+            "columnName": "sortOrder",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "-1"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "fileHash",
+            "pageIndex"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_UserBookmark_fileHash",
+            "unique": false,
+            "columnNames": [
+              "fileHash"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_UserBookmark_fileHash` ON `${TABLE_NAME}` (`fileHash`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '8ca0e4678dc94c66b35d50abf2220f15')"
+    ]
+  }
+}

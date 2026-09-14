@@ -7,18 +7,18 @@ import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
+import android.view.Window
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Space
 import android.widget.TextView
 import androidx.annotation.StringRes
-import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatDialog
 import androidx.appcompat.content.res.AppCompatResources
 import com.gitlab.mudlej.MjPdfReader.R
 import com.gitlab.mudlej.MjPdfReader.ui.reader.MainActivity
 import com.google.android.material.color.MaterialColors
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.divider.MaterialDivider
 
 private const val COLOR_FALLBACK = 0
@@ -58,7 +58,7 @@ private class TileStyle(
     val density: Float,
 )
 
-fun showReaderActionsDialog(activity: MainActivity, content: ReaderMenuContent): AlertDialog {
+fun showReaderActionsDialog(activity: MainActivity, content: ReaderMenuContent): AppCompatDialog {
     val density = activity.resources.displayMetrics.density
     val textColor = MaterialColors.getColor(activity, R.attr.colorOnSurface, COLOR_FALLBACK)
     val rippleValue = TypedValue().also {
@@ -85,9 +85,10 @@ fun showReaderActionsDialog(activity: MainActivity, content: ReaderMenuContent):
     }
 
     val scroll = ScrollView(activity).apply { addView(column) }
-    val dialog = MaterialAlertDialogBuilder(activity)
-        .setView(scroll)
-        .create()
+    val dialog = AppCompatDialog(activity, R.style.ChromeMaterialAlertDialog).apply {
+        supportRequestWindowFeature(Window.FEATURE_NO_TITLE)
+        setContentView(scroll)
+    }
     dismiss = { dialog.dismiss() }
     dialog.show()
     return dialog

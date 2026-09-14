@@ -19,6 +19,7 @@ import androidx.preference.PreferenceGroup
 import androidx.preference.PreferenceScreen
 import android.widget.Toast
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.ui.toast
 import com.gitlab.mudlej.MjPdfReader.data.Preferences
 import com.gitlab.mudlej.MjPdfReader.data.ReadingLayout
 import com.gitlab.mudlej.MjPdfReader.data.resolveReadingLayout
@@ -446,7 +447,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 throw e
             } catch (e: Exception) {
                 if (isAdded) {
-                    Toast.makeText(requireContext(), R.string.clear_data_failed, Toast.LENGTH_SHORT).show()
+                    toast(requireContext(), R.string.clear_data_failed, Toast.LENGTH_SHORT)
                 }
                 return@launch
             }
@@ -455,7 +456,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
             }
             val message = count?.let { resources.getQuantityString(R.plurals.cleared_entries, it, it) }
                 ?: getString(R.string.cleared_done)
-            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+            toast(requireContext(), message, Toast.LENGTH_SHORT)
         }
     }
 
@@ -469,7 +470,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
             }
             if (folder == null) {
                 if (configuredFolderUri != null) {
-                    Toast.makeText(requireContext(), R.string.backup_folder_unavailable, Toast.LENGTH_SHORT).show()
+                    toast(requireContext(), R.string.backup_folder_unavailable, Toast.LENGTH_SHORT)
                 }
                 pendingExportToFolder = true
                 startPickBackupFolder()
@@ -633,7 +634,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         }
         if (!started) {
             dialog.dismiss()
-            Toast.makeText(requireContext(), R.string.backup_import_already_running, Toast.LENGTH_SHORT).show()
+            toast(requireContext(), R.string.backup_import_already_running, Toast.LENGTH_SHORT)
         }
     }
 

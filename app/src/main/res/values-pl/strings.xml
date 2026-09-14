@@ -546,7 +546,6 @@
     <string name="dracula">Dracula</string>
     <string name="text_size">Rozmiar tekstu</string>
     <string name="go_to_page">Idź do strony</string>
-    <string name="no_input">Brak danych!</string>
     <string name="go_to">Idź do</string>
     <string name="all_pages">Wszystkie strony</string>
     <string name="grid_columns">Kolumny</string>
@@ -662,6 +661,7 @@
     <string name="home_scan_locations_save">Zapisz</string>
     <string name="home_scan_locations_up">W górę</string>
     <string name="home_menu_scan_locations">Lokalizacje skanowania</string>
+    <string name="home_menu_full_rescan">Pełne ponowne skanowanie</string>
     <string name="home_search_hint">Przeszukaj swoją bibliotekę</string>
     <string name="home_tab_recent">Ostatnie</string>
     <string name="home_tab_library">Biblioteka</string>
@@ -683,7 +683,9 @@
     <string name="home_chip_abandoned">Porzucone</string>
     <string name="home_chip_all_files">Wszystkie pliki</string>
     <string name="home_hero_progress_template">%1$d%% · %2$d/%3$d</string>
-    <string name="home_scanning_progress">Skanowanie… znaleziono %1$d plików PDF</string>
+    <string name="home_scan_finding">Wyszukiwanie plików PDF… znaleziono %1$d</string>
+    <string name="home_scan_reading_details">Odczytywanie szczegółów PDF… %1$d z %2$d</string>
+    <string name="home_scan_incomplete">Skanowanie niepełne… znaleziono %1$d plików PDF</string>
     <string name="home_menu_title">Menu biblioteki</string>
     <string name="home_menu_view">Widok</string>
     <string name="home_menu_stats">Statystyki biblioteki</string>
@@ -902,7 +904,7 @@
     <string name="auto_backup_failure_notice">Ostatnia automatyczna kopia zapasowa nie powiodła się.</string>
     <string name="auto_backup_stale_notice">Automatyczna kopia zapasowa nie została wykonana od ponad dnia.</string>
     <string name="auto_backup_notice_action">Ustawienia kopii zapasowej</string>
-    <string name="home_recent_permission_message">Twoje książki potrzebują dostępu do plików, aby ponownie się otworzyć. Zezwól na dostęp, aby je odblokować.</string>
+    <string name="home_recent_permission_message">Niektórych ostatnich dokumentów nie można sprawdzić bez dostępu do plików. Zezwól na dostęp, aby MJ PDF mógł je sprawdzić i otworzyć, jeśli nadal są dostępne.</string>
     <string name="home_list_badges_title">Odznaki kart listy</string>
     <string name="home_list_badges_summary">Wybierz, które szczegóły pokazują się pod nazwami plików w widoku listy.</string>
     <string name="home_badge_pages">Liczba stron</string>

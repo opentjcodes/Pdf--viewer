@@ -23,6 +23,7 @@ import com.gitlab.mudlej.MjPdfReader.data.entity.PdfAnnotationSaveDestination
 import com.gitlab.mudlej.MjPdfReader.data.entity.PdfRecord
 import com.gitlab.mudlej.MjPdfReader.ui.reader.PostSaveAction
 import com.gitlab.mudlej.MjPdfReader.ui.reader.ReaderViewModel
+import com.gitlab.mudlej.MjPdfReader.core.debug.AnnotationTestHooks
 import com.gitlab.mudlej.MjPdfReader.core.ui.AppSnackbar
 import com.gitlab.mudlej.MjPdfReader.core.PermissionManager
 import com.gitlab.mudlej.MjPdfReader.core.io.UriCanonicalizer
@@ -440,6 +441,7 @@ class AnnotationSaveController(
     }
 
     private suspend fun writeDocumentToSaf(destinationUri: Uri): WriteResult = withContext(Dispatchers.IO) {
+        val faultMode = AnnotationTestHooks.saveFaultMode(activity)
         val tmp = File(activity.cacheDir, "annotation-save-${System.currentTimeMillis()}.pdf")
         try {
             if (!runCatching { binding.pdfView.saveAsCopy(tmp) }.getOrDefault(false)) {
@@ -452,9 +454,9 @@ class AnnotationSaveController(
             val tailHash = computeTailHash(tmp)
                 ?: return@withContext WriteResult.Failure(rescueFileName = null, unconfirmed = false)
             if (destinationUri.scheme == "file") {
-                writeToFileDestination(destinationUri, tmp, hash, identities.identity, tailHash, sizeBytes)
+                writeToFileDestination(destinationUri, tmp, hash, identities.identity, tailHash, sizeBytes, faultMode)
             } else {
-                writeToContentDestination(destinationUri, tmp, hash, identities.identity, tailHash, sizeBytes)
+                writeToContentDestination(destinationUri, tmp, hash, identities.identity, tailHash, sizeBytes, faultMode)
             }
         } finally {
             tmp.delete()
@@ -468,6 +470,7 @@ class AnnotationSaveController(
         identity: String,
         tailHash: String,
         sizeBytes: Long,
+        faultMode: String,
     ): WriteResult {
         val target = destinationUri.path?.let { File(it) }
         val parent = target?.parentFile
@@ -477,12 +480,13 @@ class AnnotationSaveController(
         val sibling = File(parent, "${target.name}.saving")
         val wrote = runCatching {
             FileOutputStream(sibling).use { output ->
-                tmp.inputStream().use { input -> input.copyTo(output) }
+                tmp.inputStream().use { input -> AnnotationTestHooks.copySaveBytes(faultMode, input, output) }
                 output.fd.sync()
             }
             true
         }.getOrDefault(false)
-        if (!wrote || sibling.length() != sizeBytes || computeHash(sibling) != hash ||
+        if (!wrote || AnnotationTestHooks.verificationFails(faultMode) ||
+            sibling.length() != sizeBytes || computeHash(sibling) != hash ||
             computeTailHash(sibling) != tailHash
         ) {
             sibling.delete()
@@ -502,18 +506,19 @@ class AnnotationSaveController(
         identity: String,
         tailHash: String,
         sizeBytes: Long,
+        faultMode: String,
     ): WriteResult {
-        var wrote = attemptContentWrite(destinationUri, tmp)
+        var wrote = attemptContentWrite(destinationUri, tmp, faultMode)
         if (wrote.isFailure) {
-            if (destinationMatches(destinationUri, hash, tailHash, sizeBytes)) {
+            if (destinationMatches(destinationUri, hash, tailHash, sizeBytes, faultMode)) {
                 return WriteResult.Success(hash, identity, sizeBytes)
             }
-            wrote = attemptContentWrite(destinationUri, tmp)
+            wrote = attemptContentWrite(destinationUri, tmp, faultMode)
         }
         if (!wrote.getOrDefault(false)) {
             return failure(tmp, unconfirmed = false)
         }
-        return if (destinationMatches(destinationUri, hash, tailHash, sizeBytes)) {
+        return if (destinationMatches(destinationUri, hash, tailHash, sizeBytes, faultMode)) {
             WriteResult.Success(hash, identity, sizeBytes)
         } else {
             failure(tmp, unconfirmed = true)
@@ -525,7 +530,11 @@ class AnnotationSaveController(
         hash: String,
         tailHash: String,
         sizeBytes: Long,
+        faultMode: String,
     ): Boolean {
+        if (AnnotationTestHooks.verificationFails(faultMode)) {
+            return false
+        }
         if (!destinationSizeMatches(destinationUri, sizeBytes)) {
             return false
         }
@@ -535,9 +544,9 @@ class AnnotationSaveController(
         return runCatching { computeTailHash(activity, destinationUri) }.getOrNull() == tailHash
     }
 
-    private fun attemptContentWrite(destinationUri: Uri, tmp: File): Result<Boolean> = runCatching {
+    private fun attemptContentWrite(destinationUri: Uri, tmp: File, faultMode: String): Result<Boolean> = runCatching {
         activity.contentResolver.openOutputStream(destinationUri, "wt")?.use { output ->
-            tmp.inputStream().use { input -> input.copyTo(output) }
+            tmp.inputStream().use { input -> AnnotationTestHooks.copySaveBytes(faultMode, input, output) }
         } != null
     }
 

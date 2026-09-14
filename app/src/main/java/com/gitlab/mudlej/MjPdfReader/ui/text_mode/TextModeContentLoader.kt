@@ -4,6 +4,9 @@ package com.gitlab.mudlej.MjPdfReader.ui.text_mode
 
 import android.net.Uri
 import androidx.appcompat.app.AppCompatActivity
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
+import com.gitlab.mudlej.MjPdfReader.core.debug.CacheStatsHook
+import com.gitlab.mudlej.MjPdfReader.core.debug.PdfExtractorDebug
 import androidx.core.view.doOnNextLayout
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -56,10 +59,29 @@ class TextModeContentLoader(
         }
     }
 
+    init {
+        if (BuildConfig.DEBUG) {
+            CacheStatsHook.registerTextLoader(this)
+        }
+    }
+
+    fun debugTextCacheStats(): CacheStatsHook.TextCacheStats? {
+        if (!BuildConfig.DEBUG) {
+            return null
+        }
+        return CacheStatsHook.TextCacheStats(
+            entryCount = textCache.size,
+            pageKeys = textCache.keys.toList(),
+        )
+    }
+
     suspend fun open(uri: Uri, password: String?): Boolean {
         val extractor = withContext(Dispatchers.IO) {
             extractionMutex.withLock {
                 try {
+                    if (BuildConfig.DEBUG) {
+                        PdfExtractorDebug.awaitPageDelay()
+                    }
                     createPdfExtractor(activity, uri, password).also { created ->
                         if (isClosing) {
                             created.close()
@@ -152,6 +174,9 @@ class TextModeContentLoader(
 
     fun close() {
         isClosing = true
+        if (BuildConfig.DEBUG) {
+            CacheStatsHook.unregisterTextLoader(this)
+        }
         recyclerView.removeCallbacks(loadVisiblePagesRunnable)
         synchronized(extractionJobs) {
             extractionJobs.toList()

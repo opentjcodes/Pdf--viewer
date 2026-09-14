@@ -170,6 +170,11 @@
             android:exported="false"
             android:label="@string/settings" />
 
+        <service
+            android:name=".ui.home.metadata.PdfMetadataService"
+            android:exported="false"
+            android:process=":pdf_metadata" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

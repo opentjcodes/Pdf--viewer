@@ -62,6 +62,7 @@ class AnimationManager {
         animation.addListener(xAnimation);
         animation.setDuration(400);
         animation.start();
+        pdfView.publishDebugState();
     }
 
     public void startYAnimation(float yFrom, float yTo) {
@@ -74,6 +75,7 @@ class AnimationManager {
         animation.addListener(yAnimation);
         animation.setDuration(400);
         animation.start();
+        pdfView.publishDebugState();
     }
 
     public void startZoomAnimation(float centerX, float centerY, float zoomFrom, float zoomTo) {
@@ -90,6 +92,7 @@ class AnimationManager {
         animation.addListener(zoomAnim);
         animation.setDuration(400);
         animation.start();
+        pdfView.publishDebugState();
     }
 
     public void startFlingAnimation(int startX, int startY, int velocityX, int velocityY, int minX, int maxX, int minY, int maxY) {
@@ -97,6 +100,7 @@ class AnimationManager {
         flinging = true;
         notifyFlingState();
         scroller.fling(startX, startY, velocityX, velocityY, minX, maxX, minY, maxY);
+        pdfView.publishDebugState();
     }
 
     public void startPageFlingAnimation(float targetOffset) {
@@ -107,6 +111,7 @@ class AnimationManager {
         }
         pageFlinging = true;
         notifyFlingState();
+        pdfView.publishDebugState();
     }
 
     void computeFling() {
@@ -119,6 +124,7 @@ class AnimationManager {
             pdfView.loadPages();
             hideHandle();
             pdfView.performPageSnap();
+            pdfView.publishDebugState();
         }
     }
 
@@ -147,6 +153,10 @@ class AnimationManager {
         return flinging || pageFlinging;
     }
 
+    boolean isAnimating() {
+        return (animation != null && animation.isRunning()) || !scroller.isFinished();
+    }
+
     private void notifyFlingState() {
         pdfView.setRenderFlinging(isFlinging());
     }
@@ -166,6 +176,7 @@ class AnimationManager {
             pageFlinging = false;
             notifyFlingState();
             hideHandle();
+            pdfView.publishDebugState();
         }
 
         @Override
@@ -174,6 +185,7 @@ class AnimationManager {
             pageFlinging = false;
             notifyFlingState();
             hideHandle();
+            pdfView.publishDebugState();
         }
     }
 
@@ -192,6 +204,7 @@ class AnimationManager {
             pageFlinging = false;
             notifyFlingState();
             hideHandle();
+            pdfView.publishDebugState();
         }
 
         @Override
@@ -200,6 +213,7 @@ class AnimationManager {
             pageFlinging = false;
             notifyFlingState();
             hideHandle();
+            pdfView.publishDebugState();
         }
     }
 
@@ -227,6 +241,7 @@ class AnimationManager {
         public void onAnimationCancel(Animator animation) {
             pdfView.loadPages();
             hideHandle();
+            pdfView.publishDebugState();
         }
 
         @Override
@@ -240,6 +255,7 @@ class AnimationManager {
                 pdfView.performPageSnap();
             }
             hideHandle();
+            pdfView.publishDebugState();
         }
 
         @Override

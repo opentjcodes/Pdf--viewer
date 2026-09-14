@@ -19,6 +19,7 @@ import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.ui.toast
 import com.gitlab.mudlej.MjPdfReader.ui.reader.DocumentState
 import com.gitlab.mudlej.MjPdfReader.pdf.PDF
 import com.gitlab.mudlej.MjPdfReader.pdf.grantPdfReadAccess
@@ -31,12 +32,10 @@ import com.gitlab.mudlej.MjPdfReader.ui.gotopage.GoToPageActivity
 import com.gitlab.mudlej.MjPdfReader.ui.gotopage.showGoToPageDialog
 import com.gitlab.mudlej.MjPdfReader.ui.tableofcontents.TableOfContentsActivity
 import com.gitlab.mudlej.MjPdfReader.ui.tableofcontents.TableOfContentsState
-import com.gitlab.mudlej.MjPdfReader.core.ui.AppSnackbar
 import com.gitlab.mudlej.MjPdfReader.core.ui.ColorUtil
 import com.gitlab.mudlej.MjPdfReader.core.ui.applyIncognitoNightModeFromIntent
 import com.gitlab.mudlej.MjPdfReader.core.ui.applyIncognitoOverlayFromIntent
 import com.google.android.material.slider.Slider
-import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -248,7 +247,6 @@ class TextModeActivity : AppCompatActivity() {
         binding.pageButton.setOnClickListener {
             showGoToPageDialog(
                 this,
-                binding.root,
                 currentPageIndex,
                 pageCount,
                 pdfUri,
@@ -530,11 +528,7 @@ class TextModeActivity : AppCompatActivity() {
     }
 
     private fun badFileExit() {
-        if (::binding.isInitialized) {
-            AppSnackbar.make(binding.root, getString(R.string.failed_to_extract_text), Snackbar.LENGTH_LONG).show()
-        } else {
-            Toast.makeText(this, getString(R.string.failed_to_extract_text), Toast.LENGTH_SHORT).show()
-        }
+        toast(this, getString(R.string.failed_to_extract_text), Toast.LENGTH_LONG)
         setPageResult(Activity.RESULT_CANCELED)
         finish()
     }

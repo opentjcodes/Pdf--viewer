@@ -546,7 +546,6 @@
     <string name="dracula">ड्रैकुला</string>
     <string name="text_size">टेक्स्ट आकार</string>
     <string name="go_to_page">पृष्ठ पर जाएं</string>
-    <string name="no_input">कोई इनपुट नहीं!</string>
     <string name="go_to">जाएं</string>
     <string name="all_pages">सभी पेज</string>
     <string name="grid_columns">कॉलम</string>
@@ -662,6 +661,7 @@
     <string name="home_scan_locations_save">सहेजें</string>
     <string name="home_scan_locations_up">ऊपर</string>
     <string name="home_menu_scan_locations">स्कैन स्थान</string>
+    <string name="home_menu_full_rescan">पूरी तरह दोबारा स्कैन करें</string>
     <string name="home_search_hint">अपनी लाइब्रेरी खोजें</string>
     <string name="home_tab_recent">हाल ही में</string>
     <string name="home_tab_library">लाइब्रेरी</string>
@@ -683,7 +683,9 @@
     <string name="home_chip_abandoned">छोड़ दिया</string>
     <string name="home_chip_all_files">सभी फ़ाइलें</string>
     <string name="home_hero_progress_template">%1$d%% · %2$d/%3$d</string>
-    <string name="home_scanning_progress">स्कैन हो रहा है… %1$d PDF मिलीं</string>
+    <string name="home_scan_finding">PDF खोजी जा रही हैं… %1$d मिलीं</string>
+    <string name="home_scan_reading_details">PDF विवरण पढ़े जा रहे हैं… %1$d में से %2$d</string>
+    <string name="home_scan_incomplete">स्कैन अधूरा है… %1$d PDF मिलीं</string>
     <string name="home_menu_title">लाइब्रेरी मेनू</string>
     <string name="home_menu_view">दृश्य</string>
     <string name="home_menu_stats">लाइब्रेरी आँकड़े</string>
@@ -888,7 +890,7 @@
     <string name="auto_backup_failure_notice">अंतिम स्वचालित बैकअप विफल रहा।</string>
     <string name="auto_backup_stale_notice">स्वचालित बैकअप एक दिन से अधिक समय से नहीं चला है।</string>
     <string name="auto_backup_notice_action">बैकअप सेटिंग्स</string>
-    <string name="home_recent_permission_message">आपकी किताबों को फिर से खोलने के लिए फ़ाइल पहुंच की आवश्यकता है। उन्हें अनलॉक करने के लिए पहुंच की अनुमति दें।</string>
+    <string name="home_recent_permission_message">फ़ाइल एक्सेस के बिना हाल के कुछ दस्तावेज़ों की जाँच नहीं की जा सकती। एक्सेस की अनुमति दें ताकि MJ PDF उनकी जाँच कर सके और यदि वे अभी भी उपलब्ध हों तो उन्हें खोल सके।</string>
     <string name="home_list_badges_title">सूची कार्ड बैज</string>
     <string name="home_list_badges_summary">चुनें कि सूची दृश्य में फ़ाइल नामों के नीचे कौन से विवरण दिखें।</string>
     <string name="home_badge_pages">पृष्ठ गणना</string>

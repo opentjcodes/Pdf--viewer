@@ -70,6 +70,18 @@ public final class PreviewStore<T> {
         return pool;
     }
 
+    public long[] debugMemoryStats() {
+        return new long[]{memory.count(), memory.sizeBytes(), memory.debugMaxBytes(), activeBucket};
+    }
+
+    public int[] debugPoolStats() {
+        return pool.debugBucketStats();
+    }
+
+    public int debugPoolCap() {
+        return pool.debugPerBucketCap();
+    }
+
     public T peek(int page) {
         return memory.get(keyFor(page));
     }

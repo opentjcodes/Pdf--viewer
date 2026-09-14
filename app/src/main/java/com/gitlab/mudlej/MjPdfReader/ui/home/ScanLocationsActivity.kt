@@ -3,6 +3,7 @@
 package com.gitlab.mudlej.MjPdfReader.ui.home
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.view.MenuItem
 import androidx.activity.OnBackPressedCallback
@@ -34,6 +35,8 @@ class ScanLocationsActivity : AppCompatActivity() {
     private lateinit var volumes: List<File>
     private var currentDir: File? = null
     private val selected = linkedSetOf<String>()
+    private lateinit var previousMode: ScanMode
+    private lateinit var previousLocations: Set<String>
     private var currentChildren: List<Pair<String, String>> = emptyList()
 
     private val backCallback = object : OnBackPressedCallback(false) {
@@ -51,8 +54,13 @@ class ScanLocationsActivity : AppCompatActivity() {
 
         volumes = StorageManager().volumeRoots(this)
 
+        previousMode = (savedInstanceState?.getString(EXTRA_PREVIOUS_MODE)
+            ?: intent.getStringExtra(EXTRA_PREVIOUS_MODE))?.let(ScanMode::valueOf) ?: pref.getScanMode()
+        previousLocations = (savedInstanceState?.getStringArrayList(EXTRA_PREVIOUS_LOCATIONS)
+            ?: intent.getStringArrayListExtra(EXTRA_PREVIOUS_LOCATIONS))?.toSet() ?: pref.getScanLocations()
+
         val savedSelection = savedInstanceState?.getStringArrayList(STATE_SELECTED)
-        selected.addAll(savedSelection ?: pref.getScanLocations())
+        selected.addAll(savedSelection ?: previousLocations)
         currentDir = savedInstanceState?.getString(STATE_CURRENT_DIR)?.let(::File)
             ?: volumes.singleOrNull()
 
@@ -70,6 +78,8 @@ class ScanLocationsActivity : AppCompatActivity() {
         super.onSaveInstanceState(outState)
         outState.putStringArrayList(STATE_SELECTED, ArrayList(selected))
         outState.putString(STATE_CURRENT_DIR, currentDir?.absolutePath)
+        outState.putString(EXTRA_PREVIOUS_MODE, previousMode.name)
+        outState.putStringArrayList(EXTRA_PREVIOUS_LOCATIONS, ArrayList(previousLocations))
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -173,9 +183,18 @@ class ScanLocationsActivity : AppCompatActivity() {
     }
 
     private fun save() {
-        pref.setScanLocations(ScanScope.normalize(selected).toSet())
-        pref.setScanMode(ScanMode.SELECTED_LOCATIONS)
-        setResult(Activity.RESULT_OK)
+        val locations = ScanScope.normalize(selected).toSet()
+        if (locations.isEmpty()) return
+        if (previousMode != ScanMode.SELECTED_LOCATIONS ||
+            locations != ScanScope.normalize(previousLocations).toSet()
+        ) {
+            pref.setScanScope(ScanMode.SELECTED_LOCATIONS, locations)
+            setResult(
+                Activity.RESULT_OK,
+                Intent().putExtra(EXTRA_PREVIOUS_MODE, previousMode.name)
+                    .putStringArrayListExtra(EXTRA_PREVIOUS_LOCATIONS, ArrayList(previousLocations)),
+            )
+        }
         finish()
     }
 
@@ -216,6 +235,8 @@ class ScanLocationsActivity : AppCompatActivity() {
     }
 
     companion object {
+        const val EXTRA_PREVIOUS_MODE = "scanLocationsPreviousMode"
+        const val EXTRA_PREVIOUS_LOCATIONS = "scanLocationsPreviousLocations"
         private const val STATE_SELECTED = "scanLocationsSelected"
         private const val STATE_CURRENT_DIR = "scanLocationsCurrentDir"
         private const val UP_ROW_PATH = ".."

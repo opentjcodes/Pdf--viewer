@@ -116,14 +116,17 @@ Permissions:
 ```sh
 git clone https://gitlab.com/mudlej_android/mj_pdf_reader.git
 cd mj_pdf_reader
+ANDROID_NDK=/path/to/android-ndk python3 build_dependencies.py
 ./gradlew assembleDebug
 ```
 
-That is enough for the app itself, since prebuilt native libraries are included.
+Native libraries are generated locally, not included in Git. Gradle packages them
+but does not run the native dependency build automatically.
 
 - To set up a build environment from a fresh Linux install, see [SETUP.md](SETUP.md).
-- To rebuild the native libraries (PDFium, FreeType, libpng, and the JNI bridge), use the scripts in [build_dependencies](build_dependencies/). Since 3.0.0, PDFium is built from source and optimized for speed instead of size, which fixed a years-old rendering slowdown.
-- After editing `mainJNILib.cpp`, go to `PdfiumAndroid/src/main/jni` and run `ndk-build`. Every future build will use the generated libs.
+- Use `build_dependencies.py` as the single native-build entrypoint. Add `--abi arm64-v8a` for one architecture or `--dry-run` to inspect the build without changing files.
+- PDFium's pinned revision, Android build settings and local Arabic patches live together in [build_dependencies/patches/pdfium](build_dependencies/patches/pdfium/README.md). Source builds apply them automatically and refuse unexpected local source changes.
+- After editing `mainJNILib.cpp`, run `ANDROID_NDK=/path/to/android-ndk python3 build_dependencies.py --native-only` to rebuild JNI using the existing dependency libraries.
 
 The repository is three modules:
 

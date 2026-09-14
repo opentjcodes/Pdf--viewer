@@ -17,7 +17,9 @@ import androidx.appcompat.widget.TooltipCompat
 import androidx.core.view.children
 import androidx.transition.ChangeBounds
 import androidx.transition.TransitionManager
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.ReaderTestHooks
 import com.gitlab.mudlej.MjPdfReader.data.Preferences
 import com.gitlab.mudlej.MjPdfReader.databinding.ActivityMainBinding
 import com.gitlab.mudlej.MjPdfReader.ui.reader.ReaderViewModel
@@ -359,14 +361,17 @@ class FullScreenOptionsManager(
                 panel.translationX = slideOffset()
             }
             panel.visibility = View.VISIBLE
-            panel.animate()
+            val animator = panel.animate()
                 .alpha(1f)
                 .translationX(0f)
                 .setDuration(SHOW_ANIMATION_MILLIS)
                 .setInterpolator(DecelerateInterpolator())
-                .start()
+            if (BuildConfig.DEBUG) {
+                animator.setUpdateListener(null)
+            }
+            animator.start()
         } else if (panel.visibility == View.VISIBLE) {
-            panel.animate()
+            val animator = panel.animate()
                 .alpha(0f)
                 .translationX(slideOffset())
                 .setDuration(HIDE_ANIMATION_MILLIS)
@@ -376,7 +381,13 @@ class FullScreenOptionsManager(
                     panel.alpha = 1f
                     panel.translationX = 0f
                 }
-                .start()
+            if (BuildConfig.DEBUG) {
+                ReaderTestHooks.fullScreenPanelHideStarted()
+                animator.setUpdateListener {
+                    ReaderTestHooks.fullScreenPanelHideTranslation(panel.translationX)
+                }
+            }
+            animator.start()
         }
         refreshInfo()
     }

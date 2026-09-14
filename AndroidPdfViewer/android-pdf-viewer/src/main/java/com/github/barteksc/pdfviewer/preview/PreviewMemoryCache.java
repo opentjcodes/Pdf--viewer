@@ -72,6 +72,10 @@ final class PreviewMemoryCache<T> {
         return entries.size();
     }
 
+    long debugMaxBytes() {
+        return maxBytes;
+    }
+
     private void trimToBudget() {
         Iterator<Map.Entry<PreviewKey, T>> iterator = entries.entrySet().iterator();
         while (sizeBytes > maxBytes && iterator.hasNext()) {

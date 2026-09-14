@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 LIB_EXTENSION = ".so"
 TGZ_EXTENSION = ".tgz"
@@ -8,7 +9,7 @@ FREETYPE_BUILD = "freetype_build"
 BUILD_TYPE = "Release"  # Release or Debug
 LINKER_FLAGS_16KB = "-Wl,-z,max-page-size=16384"
 LIB_DIR_PATH = "PdfiumAndroid/src/main/jni/lib"
-CMAKE_DIR_PATH = f"{os.getcwd()}/build_dependencies/cmake"
+CMAKE_DIR_PATH = str(Path(__file__).resolve().parent / "cmake")
 
 
 def get_toolchain_path(ndk_path):
@@ -80,8 +81,6 @@ PDFIUM_SHA256 = {
     Arch.armeabi: "7363c2ad4cb5e443a067ac0c74d693dfae84e8592d86a8823e39ac6cfd1502eb",
 }
 
-PDFIUM_GIT_URL = "https://pdfium.googlesource.com/pdfium.git"
-PDFIUM_REVISION = "2bb2bde1426504e792c84894c6ebc28ca418f499"
 DEPOT_TOOLS_GIT_URL = "https://chromium.googlesource.com/chromium/tools/depot_tools.git"
 DEPOT_TOOLS_REVISION = "13febbee9ece9e03df923f69d540afc63c6db93e"
 PDFIUM_SOURCE_DIR = "pdfium_source"
@@ -92,25 +91,6 @@ PDFIUM_GN_CPU_NAMES = {
     Arch.arm64: "arm64",
     Arch.armeabi: "arm",
 }
-
-# Mirrors bblanchon/pdfium-binaries android args, plus speed optimization:
-# their releases omit optimize_for_size, so chromium defaults android builds
-# to -Oz, which is optimized for size instead of performance
-PDFIUM_GN_ARGS = [
-    'target_os = "android"',
-    'is_debug = false',
-    'is_component_build = false',
-    'pdf_is_standalone = true',
-    'pdf_use_partition_alloc = false',
-    'pdf_enable_v8 = false',
-    'pdf_enable_xfa = false',
-    'treat_warnings_as_errors = false',
-    'clang_use_chrome_plugins = false',
-    'default_min_sdk_version = 23',
-    'use_mold = false',
-    'optimize_for_size = false',
-    'use_thin_lto = true',
-]
 
 LIB_CPP_DIR_NAMES = {
     Arch.x86: "i686-linux-android",

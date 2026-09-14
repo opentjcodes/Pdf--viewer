@@ -5,6 +5,8 @@ package com.gitlab.mudlej.MjPdfReader.ui.text_mode
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
+import com.gitlab.mudlej.MjPdfReader.core.debug.TextModeDebug
 import com.gitlab.mudlej.MjPdfReader.databinding.TextModePageItemBinding
 
 class TextModePageAdapter(
@@ -17,10 +19,16 @@ class TextModePageAdapter(
 
     override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
         this.recyclerView = recyclerView
+        if (BuildConfig.DEBUG) {
+            TextModeDebug.attach(recyclerView)
+        }
     }
 
     override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
         this.recyclerView = null
+        if (BuildConfig.DEBUG) {
+            TextModeDebug.detach(recyclerView)
+        }
     }
 
     fun submitPageCount(pageCount: Int) {

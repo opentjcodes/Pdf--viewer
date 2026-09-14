@@ -3,6 +3,7 @@
 package com.gitlab.mudlej.MjPdfReader.data.translation
 
 import android.content.Context
+import com.gitlab.mudlej.MjPdfReader.core.debug.DictionaryDebugConfig
 import com.gitlab.mudlej.MjPdfReader.core.net.contentLengthCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -50,7 +51,7 @@ object DictionaryInstaller {
     }
 
     private suspend fun download(destination: File, onProgress: (Int) -> Unit) {
-        val connection = URL(downloadUrl).openConnection() as HttpURLConnection
+        val connection = URL(DictionaryDebugConfig.resolveUrl(downloadUrl)).openConnection() as HttpURLConnection
         connection.connectTimeout = connectTimeoutMillis
         connection.readTimeout = readTimeoutMillis
         try {
@@ -75,11 +76,12 @@ object DictionaryInstaller {
                         if (totalBytes > 0) {
                             onProgress(((downloaded * 100) / totalBytes).toInt().coerceIn(0, 100))
                         }
+                        DictionaryDebugConfig.throttleChunk()
                     }
                 }
             }
             val actualSha256 = digest.digest().joinToString("") { "%02x".format(it) }
-            if (actualSha256 != expectedSha256) {
+            if (actualSha256 != DictionaryDebugConfig.resolveSha256(expectedSha256)) {
                 throw IOException("Downloaded file failed the integrity check")
             }
         } finally {

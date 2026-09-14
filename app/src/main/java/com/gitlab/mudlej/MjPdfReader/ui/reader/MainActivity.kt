@@ -32,7 +32,11 @@ import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceManager
 import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
+import com.github.barteksc.pdfviewer.PDFView
+import com.gitlab.mudlej.MjPdfReader.core.debug.AnnotationTestHooks
+import com.gitlab.mudlej.MjPdfReader.core.debug.DebugRootDescription
 import com.gitlab.mudlej.MjPdfReader.core.debug.MainThreadStallWatchdog
+import com.gitlab.mudlej.MjPdfReader.core.debug.ReaderDebugStateSource
 import com.gitlab.mudlej.MjPdfReader.core.ui.confirmDialog
 import com.gitlab.mudlej.MjPdfReader.data.*
 import com.gitlab.mudlej.MjPdfReader.databinding.ActivityMainBinding
@@ -83,7 +87,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
     private var doubleBackToExitPressedOnce = false
     private var savingProgressVisible = false
     private var taskDescriptionName: String? = null
-    private val stallWatchdog by lazy { MainThreadStallWatchdog() }
+    private val stallWatchdog by lazy { MainThreadStallWatchdog(activityOwned = true) }
 
     private val annotationController get() = reader.annotationController
     private val annotationSaveController get() = reader.annotationSaveController
@@ -149,11 +153,25 @@ class MainActivity : AppCompatActivity(), ReaderUi {
         StrictMode.setVmPolicy(StrictMode.VmPolicy.Builder().build())
 
         reader = ReaderComposition(this, binding, vm, pref)
+        installReaderDebugState()
         documentLoader.applyTileRenderingPreferences()
 
         openInitialDocument(savedInstanceState)
         reader.wireViews()
         overrideOnBackButtonPressed()
+    }
+
+    private fun installReaderDebugState() {
+        if (!BuildConfig.DEBUG) {
+            return
+        }
+        PDFView.enableDebugState(true)
+        binding.pdfView.attachDebugStateSource(
+            ReaderDebugStateSource(vm, documentLoader, readerHistory),
+        )
+        AnnotationTestHooks.install(binding.pdfView, vm, ::updateDirtyUi)
+        DebugRootDescription.attachLayoutDirection(binding.root)
+        reader.publishDebugHistory()
     }
 
     private fun openInitialDocument(savedInstanceState: Bundle?) {
@@ -581,7 +599,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
         super.onPause()
     }
 
-    internal fun shareFile(uri: Uri?, asImage: Boolean = false) {
+    internal fun shareFile(uri: Uri?) {
         if (uri == null) {
             checkHasFile()  // only to show the message
             return
@@ -596,14 +614,18 @@ class MainActivity : AppCompatActivity(), ReaderUi {
             }
             return
         }
-        if (asImage) {
-            startShareIntent(imageShareIntent(getString(R.string.share_file), pdf.name, uri))
-            return
-        }
 
         lifecycleScope.launch {
             startShareIntent(pdfShareIntent(this@MainActivity, uri, pdf.name))
         }
+    }
+
+    internal fun shareImage(uri: Uri?, displayName: String) {
+        if (uri == null) {
+            checkHasFile()
+            return
+        }
+        startShareIntent(imageShareIntent(getString(R.string.share_file), displayName, uri))
     }
 
     private fun showShareChoiceDialog(localCopy: File) {
@@ -769,6 +791,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
 
     override fun onDestroy() {
         if (::reader.isInitialized) {
+            AnnotationTestHooks.uninstall(binding.pdfView)
             reader.autoScrollSpeedStore.flushPendingSave()
             cropMarginsController.cancel()
             reader.inlineAnnotationActionController.hideActions()
@@ -778,6 +801,11 @@ class MainActivity : AppCompatActivity(), ReaderUi {
             OnlineDocumentStore.sweepIncognito(this)
         }
         super.onDestroy()
+    }
+
+    override fun showProgress() {
+        binding.progressBar.isIndeterminate = true
+        binding.progressBar.visibility = View.VISIBLE
     }
 
     override fun hideProgress() {

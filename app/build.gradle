@@ -57,6 +57,9 @@ android {
         multiDexEnabled = true
         vectorDrawables.useSupportLibrary = true
 
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunnerArguments clearPackageData: 'true'
+
         def crashAppId = project.findProperty("AI") ?: ""
         def crashApiKey = project.findProperty("AK") ?: ""
         def crashApiUri = project.findProperty("AU") ?: ""
@@ -66,10 +69,15 @@ android {
     }
 
     buildFeatures {
+        aidl = true
         buildConfig = true
         resValues = true
         viewBinding = true
     }
+    sourceSets {
+        androidTest.assets.srcDir "$projectDir/schemas"
+    }
+
 
     packaging {
         jniLibs {
@@ -110,6 +118,16 @@ android {
             debuggable true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+
+        benchmark {
+            initWith release
+            debuggable false
+            minifyEnabled true
+            shrinkResources true
+            signingConfig signingConfigs.debug
+            matchingFallbacks = ['release']
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
     }
     compileOptions {
         coreLibraryDesugaringEnabled = true // for LocalDateTime before api < 26
@@ -120,6 +138,8 @@ android {
     namespace = 'com.gitlab.mudlej.MjPdfReader'
     testOptions {
         unitTests.returnDefaultValues = true
+        execution = 'ANDROIDX_TEST_ORCHESTRATOR'
+        animationsDisabled = true
     }
     lint {
         abortOnError = true
@@ -201,4 +221,23 @@ dependencies {
     }
 
     testImplementation 'junit:junit:4.13.2'
+
+    androidTestImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test:core-ktx:1.7.0'
+    androidTestImplementation 'androidx.test:runner:1.7.0'
+    androidTestImplementation 'androidx.test:rules:1.7.0'
+    androidTestImplementation 'androidx.test.ext:junit-ktx:1.3.0'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.7.0'
+    androidTestImplementation 'androidx.test.espresso:espresso-intents:3.7.0'
+    androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.3.0'
+    androidTestImplementation 'androidx.work:work-testing:2.10.1'
+    androidTestImplementation 'androidx.room:room-testing:2.8.4'
+    debugImplementation 'org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1'
+    debugImplementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1'
+    androidTestImplementation 'org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1'
+    androidTestImplementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1'
+    androidTestImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+    androidTestImplementation 'com.squareup.okhttp3:okhttp-tls:4.12.0'
+
+    androidTestUtil 'androidx.test:orchestrator:1.6.1'
 }

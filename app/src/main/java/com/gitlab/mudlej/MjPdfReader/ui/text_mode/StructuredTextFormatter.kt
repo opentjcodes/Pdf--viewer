@@ -85,6 +85,7 @@ object StructuredTextFormatter {
         val width: Float,
         val fontSize: Float,
         var gap: Float,
+        val left: Float = 0f,
     )
 
     private class CellGroup(val isSpace: Boolean, val cells: MutableList<Cell>)
@@ -122,6 +123,7 @@ object StructuredTextFormatter {
         val avgCharWidth: Float,
         val isCode: Boolean,
         val rtlDominant: Boolean,
+        val gutter: ClosedFloatingPointRange<Float>?,
     )
 
     private class PageStats(
@@ -277,6 +279,7 @@ object StructuredTextFormatter {
                 width = width,
                 fontSize = metrics.fontSize[i],
                 gap = -1f,
+                left = metrics.left[i],
             )
         )
         accumulator.minX = min(accumulator.minX, metrics.left[i])
@@ -307,6 +310,17 @@ object StructuredTextFormatter {
         val sizes = validCells.mapNotNull { cell -> cell.fontSize.takeIf { it > 0f } }
         val lineSize = if (sizes.isNotEmpty()) median(sizes) else FALLBACK_SIZE_HEIGHT_FACTOR * refHeight
         val isCode = accumulator.monoCount >= CODE_LINE_MONO_FRACTION * accumulator.validCount
+
+        var gutter: ClosedFloatingPointRange<Float>? = null
+        var rightEdge = accumulator.minX
+        for (cell in validCells.sortedBy { it.left }) {
+            val start = rightEdge + 1.5f * refHeight
+            val end = cell.left - 1.5f * refHeight
+            if (end > start && (gutter == null || end - start > gutter.endInclusive - gutter.start)) {
+                gutter = start..end
+            }
+            rightEdge = max(rightEdge, cell.left + cell.width)
+        }
 
         var cells: List<Cell> = accumulator.cells
         if (!isCode) {
@@ -350,6 +364,7 @@ object StructuredTextFormatter {
             avgCharWidth = avgCharWidth,
             isCode = isCode,
             rtlDominant = accumulator.rtlLetters > accumulator.ltrLetters,
+            gutter = gutter,
         )
     }
 
@@ -497,11 +512,25 @@ object StructuredTextFormatter {
         detectCodeBlocks: Boolean,
     ): List<Paragraph> {
         val shortRun = markShortRuns(lines, stats.typicalWidth)
+        val tableRows = BooleanArray(lines.size)
+        for (index in 0 until lines.size - 2) {
+            val rows = lines.subList(index, index + 3)
+            if (rows.any { it.isCode || it.gutter == null }) continue
+            if (rows.zipWithNext().any { (a, b) ->
+                    val gap = a.baseline - b.baseline
+                    gap <= 0f || gap > GAP_MERGE_FACTOR * stats.medianGap
+                }) continue
+            if (rows.maxOf { it.gutter!!.start } < rows.minOf { it.gutter!!.endInclusive }) {
+                for (row in index..index + 2) tableRows[row] = true
+            }
+        }
         val paragraphs = ArrayList<Paragraph>()
         for (index in lines.indices) {
             val line = lines[index]
             val current = paragraphs.lastOrNull()
-            if (current != null && canMerge(current, line, index, levels, shortRun, stats, joinParagraphs, detectCodeBlocks)) {
+            if (current != null && !tableRows[current.lastIndex] && !tableRows[index] &&
+                canMerge(current, line, index, levels, shortRun, stats, joinParagraphs, detectCodeBlocks)
+            ) {
                 current.lines.add(line)
                 current.lastIndex = index
             } else {

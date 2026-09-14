@@ -4,8 +4,11 @@ package com.gitlab.mudlej.MjPdfReader.pdf
 
 import android.graphics.Bitmap
 import android.util.Log
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
+import com.gitlab.mudlej.MjPdfReader.core.debug.PdfExtractorDebug
 import com.shockwave.pdfium.PdfDocument
 import com.shockwave.pdfium.PdfiumCore
+import java.io.IOException
 
 private const val TAG = "PdfExtractor"
 private const val MAX_METRICS_CHARS = 20_000
@@ -14,6 +17,15 @@ class PdfExtractor(
     private val pdfiumCore: PdfiumCore,
     private val pdfDocument: PdfDocument
 ) {
+
+    private var debugCounted = false
+
+    init {
+        if (BuildConfig.DEBUG) {
+            debugCounted = true
+            PdfExtractorDebug.onExtractorCreated()
+        }
+    }
 
     fun getPageText(pageNumber: Int): String {
         return try {
@@ -26,7 +38,14 @@ class PdfExtractor(
     }
 
     fun getPageTextOrThrow(pageNumber: Int): String {
+        if (BuildConfig.DEBUG && PdfExtractorDebug.consumePageTextFault(pageNumber)) {
+            throw IOException("debug page text fault on page $pageNumber")
+        }
         val index = getIndex(pageNumber) ?: return ""
+        if (BuildConfig.DEBUG) {
+            PdfExtractorDebug.onPageExtraction()
+            PdfExtractorDebug.awaitPageDelay()
+        }
         var opened = false
 
         pdfiumCore.openPage(pdfDocument, index)
@@ -43,6 +62,9 @@ class PdfExtractor(
 
     fun getPageCharMetrics(pageNumber: Int): PageCharMetrics? {
         val index = getIndex(pageNumber) ?: return null
+        if (BuildConfig.DEBUG) {
+            PdfExtractorDebug.onPageExtraction()
+        }
         return try {
             var opened = false
             try {
@@ -183,6 +205,10 @@ class PdfExtractor(
             pdfiumCore.closeDocument(pdfDocument)
         } catch (throwable: Throwable) {
             Log.e(TAG, "close: failed to close document", throwable)
+        }
+        if (BuildConfig.DEBUG && debugCounted) {
+            debugCounted = false
+            PdfExtractorDebug.onExtractorClosed()
         }
     }
 

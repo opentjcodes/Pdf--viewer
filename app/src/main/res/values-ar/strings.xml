@@ -546,7 +546,6 @@
     <string name="dracula">دراكولا</string>
     <string name="text_size">حجم النص</string>
     <string name="go_to_page">الذهاب إلى الصفحة</string>
-    <string name="no_input">لم تدخل شيئا!</string>
     <string name="go_to">اذهب إلى</string>
     <string name="all_pages">كل الصفحات</string>
     <string name="grid_columns">الأعمدة</string>
@@ -662,6 +661,7 @@
     <string name="home_scan_locations_save">حفظ</string>
     <string name="home_scan_locations_up">أعلى</string>
     <string name="home_menu_scan_locations">مواقع الفحص</string>
+    <string name="home_menu_full_rescan">إعادة فحص كاملة</string>
     <string name="home_search_hint">ابحث في مكتبتك</string>
     <string name="home_tab_recent">الأخيرة</string>
     <string name="home_tab_library">المكتبة</string>
@@ -683,7 +683,9 @@
     <string name="home_chip_abandoned">مهجور</string>
     <string name="home_chip_all_files">كل الملفات</string>
     <string name="home_hero_progress_template">%1$d%% · %2$d/%3$d</string>
-    <string name="home_scanning_progress">جارٍ الفحص… تم العثور على %1$d ملف PDF</string>
+    <string name="home_scan_finding">جارٍ البحث عن ملفات PDF… تم العثور على %1$d</string>
+    <string name="home_scan_reading_details">جارٍ قراءة تفاصيل PDF… %1$d من %2$d</string>
+    <string name="home_scan_incomplete">الفحص غير مكتمل… تم العثور على %1$d ملف PDF</string>
     <string name="home_menu_title">قائمة المكتبة</string>
     <string name="home_menu_view">العرض</string>
     <string name="home_menu_stats">إحصاءات المكتبة</string>
@@ -916,7 +918,7 @@
     <string name="auto_backup_failure_notice">فشلت آخر نسخة احتياطية تلقائية.</string>
     <string name="auto_backup_stale_notice">لم يعمل النسخ الاحتياطي التلقائي منذ أكثر من يوم.</string>
     <string name="auto_backup_notice_action">إعدادات النسخ الاحتياطي</string>
-    <string name="home_recent_permission_message">تحتاج كتبك إلى الوصول إلى الملفات لتفتح مرة أخرى. اسمح بالوصول لفتحها.</string>
+    <string name="home_recent_permission_message">يتعذر التحقق من بعض المستندات الحديثة دون الوصول إلى الملفات. اسمح بالوصول حتى يتمكن MJ PDF من التحقق منها وفتحها إذا كانت لا تزال متاحة.</string>
     <string name="home_list_badges_title">شارات بطاقة القائمة</string>
     <string name="home_list_badges_summary">اختر التفاصيل التي تظهر تحت أسماء الملفات في عرض القائمة.</string>
     <string name="home_badge_pages">عدد الصفحات</string>

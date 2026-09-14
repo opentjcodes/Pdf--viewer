@@ -8,7 +8,9 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.viewpager2.widget.ViewPager2
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.IntroDebug
 import com.gitlab.mudlej.MjPdfReader.core.ui.setupScreenChrome
 import com.gitlab.mudlej.MjPdfReader.databinding.ActivityIntroBinding
 
@@ -69,6 +71,9 @@ class MainIntroActivity : AppCompatActivity() {
         supportActionBar?.hide()
 
         binding.introPager.adapter = IntroPagerAdapter(pages)
+        if (BuildConfig.DEBUG) {
+            IntroDebug.attach(binding.introPager)
+        }
         createDots()
         binding.introPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
@@ -81,6 +86,13 @@ class MainIntroActivity : AppCompatActivity() {
             if (binding.introPager.currentItem == pages.lastIndex) finish()
             else binding.introPager.currentItem += 1
         }
+    }
+
+    override fun onDestroy() {
+        if (BuildConfig.DEBUG) {
+            IntroDebug.detach(binding.introPager)
+        }
+        super.onDestroy()
     }
 
     private fun createDots() {
@@ -109,5 +121,16 @@ class MainIntroActivity : AppCompatActivity() {
         val isLastPage = position == pages.lastIndex
         binding.skipButton.visibility = if (isLastPage) View.INVISIBLE else View.VISIBLE
         binding.nextButton.setText(if (isLastPage) R.string.intro_get_started else R.string.intro_next)
+        updateDebugDescriptions(position)
+    }
+
+    private fun updateDebugDescriptions(position: Int) {
+        if (!BuildConfig.DEBUG) {
+            return
+        }
+        binding.introPager.contentDescription = "intro-page:$position:${pages.size}"
+        dots.forEachIndexed { index, dot ->
+            dot.contentDescription = if (index == position) "intro-dot-active" else "intro-dot-inactive"
+        }
     }
 }

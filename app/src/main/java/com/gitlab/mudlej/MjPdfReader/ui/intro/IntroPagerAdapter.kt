@@ -4,14 +4,20 @@ package com.gitlab.mudlej.MjPdfReader.ui.intro
 
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.text.Spanned
 import android.text.method.LinkMovementMethod
+import android.text.style.URLSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.core.text.HtmlCompat
 import androidx.recyclerview.widget.RecyclerView
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
+import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.IntroPageSnapshot
 import com.gitlab.mudlej.MjPdfReader.databinding.IntroFeatureRowItemBinding
 import com.gitlab.mudlej.MjPdfReader.databinding.IntroPageItemBinding
 import com.google.android.material.color.MaterialColors
@@ -33,7 +39,35 @@ class IntroPagerAdapter(
     private val pages: List<IntroPage>,
 ) : RecyclerView.Adapter<IntroPagerAdapter.PageViewHolder>() {
 
-    class PageViewHolder(val binding: IntroPageItemBinding) : RecyclerView.ViewHolder(binding.root)
+    class PageViewHolder(val binding: IntroPageItemBinding) : RecyclerView.ViewHolder(binding.root) {
+
+        fun debugSnapshot(position: Int): IntroPageSnapshot? {
+            if (!BuildConfig.DEBUG) {
+                return null
+            }
+            val footer = binding.footerText
+            val footerContent = footer.text
+            val links = (footerContent as? Spanned)
+                ?.getSpans(0, footerContent.length, URLSpan::class.java)
+                ?.map { span -> span.url }
+                .orEmpty()
+            return IntroPageSnapshot(
+                position = position,
+                title = binding.pageTitle.text,
+                featureTexts = featureTexts(),
+                footerVisible = footer.visibility == View.VISIBLE,
+                footerText = footerContent,
+                footerLinkUrls = links,
+            )
+        }
+
+        private fun featureTexts(): List<CharSequence> {
+            val rows = binding.featuresLayout
+            return (0 until rows.childCount).mapNotNull { index ->
+                rows.getChildAt(index).findViewById<TextView>(R.id.featureText)?.text
+            }
+        }
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageViewHolder {
         val inflater = LayoutInflater.from(parent.context)

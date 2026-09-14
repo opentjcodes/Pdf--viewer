@@ -2,6 +2,7 @@
 package com.github.barteksc.pdfviewer.preview;
 
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -49,5 +50,24 @@ public final class PreviewBitmapPool<T> {
     synchronized int size(int bucketWidthPx) {
         ArrayDeque<T> free = buckets.get(bucketWidthPx);
         return free == null ? 0 : free.size();
+    }
+
+    synchronized int debugPerBucketCap() {
+        return perBucketCap;
+    }
+
+    synchronized int[] debugBucketStats() {
+        int[] widths = new int[buckets.size()];
+        int next = 0;
+        for (Integer width : buckets.keySet()) {
+            widths[next++] = width;
+        }
+        Arrays.sort(widths);
+        int[] stats = new int[widths.length * 2];
+        for (int i = 0; i < widths.length; i++) {
+            stats[i * 2] = widths[i];
+            stats[i * 2 + 1] = buckets.get(widths[i]).size();
+        }
+        return stats;
     }
 }

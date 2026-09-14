@@ -2,27 +2,88 @@
 
 package com.gitlab.mudlej.MjPdfReader.ui.home
 
+import android.net.Uri
+import com.gitlab.mudlej.MjPdfReader.data.HistoryPolicy
 import com.gitlab.mudlej.MjPdfReader.data.Preferences
 import com.gitlab.mudlej.MjPdfReader.data.entity.ReadingStatus
 import com.gitlab.mudlej.MjPdfReader.data.PdfRepository
+import com.gitlab.mudlej.MjPdfReader.data.entity.PdfRecord
 import com.gitlab.mudlej.MjPdfReader.data.entity.ScannedPdfEntry
+import com.gitlab.mudlej.MjPdfReader.data.entity.ScannedPdfMetadataState
+import com.gitlab.mudlej.MjPdfReader.data.entity.SourceFingerprint
+import com.gitlab.mudlej.MjPdfReader.data.entity.fingerprint
+import com.gitlab.mudlej.MjPdfReader.ui.home.scan.LibraryIndex
+import com.gitlab.mudlej.MjPdfReader.ui.home.scan.ScanPhase
+import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 
 class HomeLibraryController(
     private val pdfRepository: PdfRepository,
     private val pref: Preferences,
+    private val historyPolicy: HistoryPolicy,
 ) {
+    fun observeRecords(): Flow<List<PdfRecord>> = pdfRepository.observeRecords()
 
-    suspend fun loadLibrary(availabilityProbe: AvailabilityProbe, annotatedTitleFormat: String): List<HomeItem> {
+    suspend fun recordItems(
+        records: List<PdfRecord>,
+        annotatedTitleFormat: String,
+        availabilityProbe: AvailabilityProbe,
+    ): List<HomeItem> {
         val showPdfTitle = pref.getHomeShowPdfTitle()
-        val records = pdfRepository.findAllRecords()
         val items = withContext(Dispatchers.IO) {
             records
                 .filter { it.fileName.isNotEmpty() }
-                .map { HomeItem.from(it, showPdfTitle, availabilityProbe.availabilityOf(it.uri), annotatedTitleFormat) }
+                .map {
+                    val availability = if (it.uri.scheme == "file") {
+                        availabilityProbe.availabilityOf(it.uri)
+                    } else Availability.ACCESS_UNKNOWN
+                    HomeItem.from(
+                        it, showPdfTitle, availability,
+                        annotatedTitleFormat,
+                    )
+                }
         }
         return sort(items)
+    }
+
+    internal suspend fun relinkCompletedIndex(
+        scanIndex: LibraryIndex,
+        records: List<PdfRecord>,
+        availability: Map<String, Availability>,
+        probe: AvailabilityProbe,
+        isCurrent: () -> Boolean,
+    ) {
+        if (!scanIndex.loaded || scanIndex.active ||
+            scanIndex.phase !in setOf(ScanPhase.IDLE, ScanPhase.INCOMPLETE) ||
+            !historyPolicy.canRecord() || !isCurrent()
+        ) return
+        val candidates = scanIndex.entries.filter {
+            it.hash != null && it.metadataState == ScannedPdfMetadataState.COMPLETE &&
+                ScanScope.contains(scanIndex.scopeRoots, it.path)
+        }.groupBy { it.hash }
+        for (record in records) {
+            if (availability[record.uri.toString()] != Availability.MISSING) continue
+            if (!historyPolicy.canRecord() || !isCurrent()) return
+            val recordCandidates = candidates[record.hash] ?: continue
+            val stillMissing = withContext(Dispatchers.IO) {
+                probe.availabilityOf(record.uri) == Availability.MISSING
+            }
+            if (!stillMissing) continue
+            for (entry in recordCandidates) {
+                val file = File(entry.path)
+                val destination = Uri.fromFile(file)
+                if (record.uri == destination) continue
+                val repaired = pdfRepository.repairRecordIdentity(record, destination, file.nameWithoutExtension) {
+                    historyPolicy.canRecord() && isCurrent() &&
+                        (record.uri.scheme != "file" || record.uri.path?.let { File(it).canRead() } != true) &&
+                        file.canRead() && SourceFingerprint.normalized(file.path, file.length(), file.lastModified()) == entry.fingerprint &&
+                        historyPolicy.canRecord() && isCurrent()
+                }
+                if (repaired) break
+            }
+        }
     }
 
     fun sort(items: List<HomeItem>): List<HomeItem> {
@@ -38,7 +99,21 @@ class HomeLibraryController(
         }
     }
 
-    fun mergeWithScan(records: List<HomeItem>, entries: List<ScannedPdfEntry>): List<HomeItem> {
+    fun mergeDuringDiscovery(records: List<HomeItem>, entries: List<ScannedPdfEntry>): List<HomeItem> {
+        val recordsByPath = records
+            .filter { it.uri.scheme == "file" }
+            .associateBy { it.uri.path }
+        return entries.map { entry ->
+            val match = recordsByPath[entry.path]
+            match?.copy(
+                sizeBytes = if (match.sizeBytes > 0) match.sizeBytes else entry.size,
+                length = if (match.length > 0) match.length else entry.completedPageCount,
+            ) ?: HomeItem.fromScan(entry)
+        }.distinctBy { it.stableKey }
+    }
+
+
+    fun reconcileWithScan(records: List<HomeItem>, entries: List<ScannedPdfEntry>): List<HomeItem> {
         val recordsByPath = records
             .filter { it.uri.scheme == "file" }
             .associateBy { it.uri.path }
@@ -48,11 +123,14 @@ class HomeLibraryController(
                 val match = recordsByPath[entry.path] ?: entry.hash?.let { recordsByHash[it] }
                 match?.copy(
                     sizeBytes = if (match.sizeBytes > 0) match.sizeBytes else entry.size,
-                    length = if (match.length > 0) match.length else entry.pageCount,
+                    length = if (match.length > 0) match.length else entry.completedPageCount,
                 ) ?: HomeItem.fromScan(entry)
             }
             .distinctBy { it.uri }
     }
+
+    private val ScannedPdfEntry.completedPageCount: Int
+        get() = pageCount.takeIf { metadataState == ScannedPdfMetadataState.COMPLETE } ?: 0
 
     fun filterByChip(items: List<HomeItem>, filter: ListFilter): List<HomeItem> {
         return when (filter) {
@@ -98,7 +176,7 @@ class HomeLibraryController(
             return records
         }
         val recordMatches = filterByQuery(records, query)
-        val scanMatches = mergeWithScan(records, entries)
+        val scanMatches = reconcileWithScan(records, entries)
             .filter { it.isScanOnly && it.title.contains(query, ignoreCase = true) }
         return sort(recordMatches + scanMatches)
     }

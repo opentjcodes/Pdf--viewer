@@ -4,6 +4,7 @@ package com.gitlab.mudlej.MjPdfReader.data
 
 import android.util.Log
 import androidx.room.withTransaction
+import com.gitlab.mudlej.MjPdfReader.core.debug.AnnotationTestHooks
 import com.gitlab.mudlej.MjPdfReader.core.io.DocumentIdentities
 import com.gitlab.mudlej.MjPdfReader.core.io.DocumentIdentity
 import com.gitlab.mudlej.MjPdfReader.core.io.UriCanonicalizer
@@ -11,10 +12,14 @@ import com.gitlab.mudlej.MjPdfReader.data.entity.ReadingStatus
 import com.gitlab.mudlej.MjPdfReader.data.entity.PdfAnnotationSaveDestination
 import com.gitlab.mudlej.MjPdfReader.data.entity.PdfRecord
 import com.gitlab.mudlej.MjPdfReader.data.entity.ScannedPdfEntry
+import com.gitlab.mudlej.MjPdfReader.data.entity.ScannedPdfMetadataFailure
+import com.gitlab.mudlej.MjPdfReader.data.entity.SourceFingerprint
 import com.gitlab.mudlej.MjPdfReader.data.entity.TextModeReflowOverride
 import com.gitlab.mudlej.MjPdfReader.data.entity.UserBookmark
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 
@@ -37,6 +42,8 @@ class PdfRepository(private val database: AppDatabase) {
             database.pdfRecordDao().findAll()
         }
     }
+
+    fun observeRecords(): Flow<List<PdfRecord>> = database.pdfRecordDao().observeAll().distinctUntilChanged()
 
     suspend fun upsertRecords(records: List<PdfRecord>) {
         safeWrite {
@@ -64,7 +71,7 @@ class PdfRepository(private val database: AppDatabase) {
             } else {
                 bookmark
             }
-            dao.upsert(orderedBookmark)
+            dao.insertIfAbsent(orderedBookmark)
         }
     }
 
@@ -118,6 +125,20 @@ class PdfRepository(private val database: AppDatabase) {
         }
     }
 
+    suspend fun repairRecordIdentity(
+        previous: PdfRecord,
+        uri: android.net.Uri,
+        fileName: String,
+        canRepair: () -> Boolean,
+    ): Boolean = withContext(Dispatchers.IO) {
+        database.withTransaction {
+            if (!canRepair()) return@withTransaction false
+            database.pdfRecordDao().repairIdentity(
+                previous.hash, previous.uri, previous.sourceUri, uri, fileName,
+            ) == 1
+        }
+    }
+
     suspend fun setRecordSourceUri(fileHash: String, sourceUri: String?) {
         safeWrite {
             database.pdfRecordDao().updateSourceUri(fileHash, sourceUri)
@@ -164,6 +185,7 @@ class PdfRepository(private val database: AppDatabase) {
         uri: android.net.Uri? = null,
         context: android.content.Context? = null,
     ): String {
+        AnnotationTestHooks.awaitIdentityRelease()
         val dao = database.pdfRecordDao()
         val shouldConvert = withContext(Dispatchers.IO) {
             if (dao.hasRecord(identities.identity)) {
@@ -418,28 +440,96 @@ class PdfRepository(private val database: AppDatabase) {
         }
     }
 
+    suspend fun findScannedPdfByPath(path: String): ScannedPdfEntry? = withContext(Dispatchers.IO) {
+        database.scannedPdfEntryDao().findByPath(path)
+    }
+
+    suspend fun pruneScannedPdf(fingerprint: SourceFingerprint): Boolean = scanTransaction {
+        database.scannedPdfEntryDao().deleteByFingerprint(
+            fingerprint.path, fingerprint.size, fingerprint.lastModified,
+        ) == 1
+    }
+
+    suspend fun findPendingScannedPdfs(): List<ScannedPdfEntry> {
+        return withContext(Dispatchers.IO) {
+            database.scannedPdfEntryDao().findPending()
+        }
+    }
+
+    suspend fun persistDiscoveredPdfs(entries: List<ScannedPdfEntry>) {
+        scanTransaction {
+            database.scannedPdfEntryDao().upsertAll(entries)
+        }
+    }
+
+    suspend fun completeScannedPdfMetadata(
+        fingerprint: SourceFingerprint,
+        hash: String?,
+        pageCount: Int,
+    ): Boolean = scanTransaction {
+        database.scannedPdfEntryDao().completeMetadata(
+            path = fingerprint.path,
+            size = fingerprint.size,
+            lastModified = fingerprint.lastModified,
+            hash = hash,
+            pageCount = pageCount,
+        ) == 1
+    }
+
+    suspend fun failScannedPdfMetadata(
+        fingerprint: SourceFingerprint,
+        hash: String?,
+        failure: ScannedPdfMetadataFailure,
+    ): Boolean = scanTransaction {
+        database.scannedPdfEntryDao().failMetadata(
+            path = fingerprint.path,
+            size = fingerprint.size,
+            lastModified = fingerprint.lastModified,
+            hash = hash,
+            failure = failure,
+        ) == 1
+    }
+
+    suspend fun recordScannedPdfWorkerDeath(fingerprint: SourceFingerprint): ScannedPdfEntry? =
+        scanTransaction {
+            val changed = database.scannedPdfEntryDao().recordWorkerDeath(
+                path = fingerprint.path,
+                size = fingerprint.size,
+                lastModified = fingerprint.lastModified,
+            )
+            if (changed == 0) return@scanTransaction null
+            database.scannedPdfEntryDao().findByPath(fingerprint.path)
+        }
+
+    suspend fun updateScannedPdfHash(fingerprint: SourceFingerprint, hash: String): Boolean =
+        withContext(Dispatchers.IO) {
+            database.scannedPdfEntryDao().updateHash(
+                path = fingerprint.path,
+                size = fingerprint.size,
+                lastModified = fingerprint.lastModified,
+                hash = hash,
+            ) == 1
+        }
+
+    suspend fun pruneScannedPdfsThrowing(paths: List<String>) {
+        scanTransaction {
+            database.scannedPdfEntryDao().deleteByPaths(paths)
+        }
+    }
+
+    suspend fun renameScannedPdfThrowing(oldPath: String, newPath: String): Boolean =
+        scanTransaction {
+            database.scannedPdfEntryDao().updatePath(oldPath, newPath) == 1
+        }
+
     suspend fun findScannedPdfsByHash(hash: String): List<ScannedPdfEntry> {
         return withContext(Dispatchers.IO) {
             database.scannedPdfEntryDao().findByHash(hash)
         }
     }
 
-    suspend fun upsertScannedPdfs(entries: List<ScannedPdfEntry>) {
-        safeWrite {
-            database.scannedPdfEntryDao().upsertAll(entries)
-        }
-    }
-
-    suspend fun pruneScannedPdfs(paths: List<String>) {
-        safeWrite {
-            database.scannedPdfEntryDao().deleteByPaths(paths)
-        }
-    }
-
-    suspend fun updateScannedPdfPath(oldPath: String, newPath: String) {
-        safeWrite {
-            database.scannedPdfEntryDao().updatePath(oldPath, newPath)
-        }
+    private suspend fun <T> scanTransaction(block: () -> T): T = withContext(Dispatchers.IO) {
+        database.withTransaction { block() }
     }
 
     suspend fun setPassword(fileHash: String, password: String) {

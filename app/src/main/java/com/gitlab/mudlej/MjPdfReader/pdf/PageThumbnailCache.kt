@@ -7,6 +7,8 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.util.LruCache
 import android.widget.ImageView
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
+import com.gitlab.mudlej.MjPdfReader.core.debug.CacheStatsHook
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +44,12 @@ class PageThumbnailCache(
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount / 1024
     }
 
+    init {
+        if (BuildConfig.DEBUG) {
+            CacheStatsHook.registerThumbnailCache(this)
+        }
+    }
+
     suspend fun pageCount(): Int = withContext(renderDispatcher) {
         extractorOrNull()?.getPageCount() ?: 0
     }
@@ -74,6 +82,24 @@ class PageThumbnailCache(
         }
     }
 
+    fun debugCacheStats(): CacheStatsHook.LruStats? {
+        if (!BuildConfig.DEBUG) {
+            return null
+        }
+        return CacheStatsHook.LruStats(
+            entryCount = memoryCache.snapshot().size,
+            sizeKb = memoryCache.size(),
+            maxSizeKb = memoryCache.maxSize(),
+        )
+    }
+
+    fun debugCacheKeys(): List<String> {
+        if (!BuildConfig.DEBUG) {
+            return emptyList()
+        }
+        return memoryCache.snapshot().keys.toList()
+    }
+
     fun close() {
         closed = true
         scope.cancel()
@@ -81,6 +107,13 @@ class PageThumbnailCache(
             runCatching { extractor?.close() }
             extractor = null
             memoryCache.evictAll()
+            if (BuildConfig.DEBUG) {
+                CacheStatsHook.recordThumbnailCacheClosed(
+                    this@PageThumbnailCache,
+                    debugCacheStats(),
+                    debugCacheKeys(),
+                )
+            }
         }
     }
 

@@ -4,9 +4,11 @@ package com.gitlab.mudlej.MjPdfReader
 
 import android.app.Application
 import android.content.Context
+import android.os.StrictMode
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.preference.PreferenceManager
 import com.gitlab.mudlej.MjPdfReader.core.crash.ConsentPluginLoader
+import com.gitlab.mudlej.MjPdfReader.core.process.AppProcess
 import com.gitlab.mudlej.MjPdfReader.data.AutoBackupScheduler
 import com.gitlab.mudlej.MjPdfReader.data.OnlineDocumentStore
 import com.gitlab.mudlej.MjPdfReader.data.Preferences
@@ -22,9 +24,13 @@ import org.acra.ktx.initAcra
 
 class App : Application() {
     override fun onCreate() {
-        DynamicColors.applyToActivitiesIfAvailable(this)
         super.onCreate()
+        if (AppProcess.isPdfMetadata(this)) {
+            return
+        }
+        DynamicColors.applyToActivitiesIfAvailable(this)
         if (!ACRA.isACRASenderServiceProcess()) {
+            installDebugThreadPolicy()
             val preferences = Preferences(PreferenceManager.getDefaultSharedPreferences(this))
             AppCompatDelegate.setDefaultNightMode(PdfThemeController.interfaceNightMode(preferences))
             if (preferences.getAutoBackupEnabled()) {
@@ -35,8 +41,24 @@ class App : Application() {
         }
     }
 
+    private fun installDebugThreadPolicy() {
+        if (!BuildConfig.DEBUG) {
+            return
+        }
+        StrictMode.setThreadPolicy(
+            StrictMode.ThreadPolicy.Builder()
+                .detectDiskReads()
+                .detectDiskWrites()
+                .penaltyLog()
+                .build()
+        )
+    }
+
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
+        if (AppProcess.isPdfMetadata(base)) {
+            return
+        }
 
         initAcra {
             buildConfigClass = BuildConfig::class.java

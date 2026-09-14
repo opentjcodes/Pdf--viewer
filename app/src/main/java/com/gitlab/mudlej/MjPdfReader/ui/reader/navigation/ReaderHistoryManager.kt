@@ -5,7 +5,9 @@ package com.gitlab.mudlej.MjPdfReader.ui.reader.navigation
 import android.os.Bundle
 import android.os.SystemClock
 import androidx.annotation.StringRes
+import androidx.preference.PreferenceManager
 import com.github.barteksc.pdfviewer.PDFView
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
 
 class ReaderHistoryManager(
@@ -37,6 +39,23 @@ class ReaderHistoryManager(
     private var suppressDwellOnce = false
     private var currentPageIndex = -1
     private var arrivedAtElapsed = 0L
+
+    private val debugDwellThresholdMs: Long by lazy {
+        val preferences = PreferenceManager.getDefaultSharedPreferences(pdfView().context)
+        runCatching { preferences.getLong(debugDwellThresholdKey, DWELL_THRESHOLD_MS) }
+            .getOrDefault(DWELL_THRESHOLD_MS)
+    }
+
+    private fun dwellThresholdMs(): Long {
+        return if (BuildConfig.DEBUG) debugDwellThresholdMs else DWELL_THRESHOLD_MS
+    }
+
+    fun elapsedDwellMs(): Long {
+        if (currentPageIndex < 0) {
+            return 0L
+        }
+        return SystemClock.elapsedRealtime() - arrivedAtElapsed
+    }
 
     fun canGoBack() = backStack.isNotEmpty()
 
@@ -126,7 +145,7 @@ class ReaderHistoryManager(
         if (leftPage < 0 || leftPage == pageIndex || skipDwell) {
             return
         }
-        if (dwellMs < DWELL_THRESHOLD_MS) {
+        if (dwellMs < dwellThresholdMs()) {
             return
         }
         if (backStack.lastOrNull()?.pageIndex == leftPage) {
@@ -234,6 +253,7 @@ class ReaderHistoryManager(
     companion object {
         private const val DWELL_THRESHOLD_MS = 30_000L
         private const val MAX_ENTRIES = 50
+        const val debugDwellThresholdKey = "debugDwellThresholdMs"
         private const val backPagesKey = "readerHistoryBackPages"
         private const val backOriginsKey = "readerHistoryBackOrigins"
         private const val backTimesKey = "readerHistoryBackTimes"

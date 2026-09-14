@@ -165,6 +165,9 @@ public class PdfiumCore {
     private native PdfDocument.FormField nativeGetFormFieldAtPoint(long docPtr, long pagePtr,
                                                                    float x, float y, float tolerance);
 
+    private native PdfDocument.FormField nativeGetFormFieldByIndex(long docPtr, long pagePtr,
+                                                                    int annotIndex);
+
     private native float[] nativeGetFormFieldRects(long docPtr, long pagePtr);
 
     private native boolean nativeSetFormFieldText(long docPtr, long pagePtr, int annotIndex,
@@ -1043,6 +1046,17 @@ public class PdfiumCore {
                 return null;
             }
             return nativeGetFormFieldAtPoint(doc.mNativeDocPtr, nativePagePtr, x, y, tolerance);
+        }
+    }
+
+    public PdfDocument.FormField getFormFieldByIndex(PdfDocument doc, int pageIndex,
+                                                     int annotationIndex) {
+        synchronized (lock) {
+            Long nativePagePtr = doc.mNativePagesPtr.get(pageIndex);
+            if (nativePagePtr == null) {
+                return null;
+            }
+            return nativeGetFormFieldByIndex(doc.mNativeDocPtr, nativePagePtr, annotationIndex);
         }
     }
 

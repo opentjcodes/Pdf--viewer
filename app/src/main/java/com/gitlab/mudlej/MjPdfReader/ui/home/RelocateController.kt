@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.ui.toast
 import com.gitlab.mudlej.MjPdfReader.ui.reader.DocumentState
 import com.gitlab.mudlej.MjPdfReader.pdf.PDF
 import com.gitlab.mudlej.MjPdfReader.data.PdfRepository
@@ -56,7 +57,7 @@ class RelocateController(
                 pdfRepository.updateRecordIdentity(
                     hash, Uri.fromFile(file), file.nameWithoutExtension, record.lastOpened
                 )
-                Toast.makeText(activity, R.string.home_relocate_found, Toast.LENGTH_SHORT).show()
+                toast(activity, R.string.home_relocate_found, Toast.LENGTH_SHORT)
                 onHealed()
                 return@launch
             }

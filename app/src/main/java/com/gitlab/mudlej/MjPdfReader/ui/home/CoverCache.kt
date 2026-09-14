@@ -8,6 +8,8 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.LruCache
 import android.widget.ImageView
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
+import com.gitlab.mudlej.MjPdfReader.core.debug.CacheStatsHook
 import com.gitlab.mudlej.MjPdfReader.data.OnlineDocumentStore
 import com.shockwave.pdfium.PdfiumCore
 import java.io.File
@@ -95,6 +97,17 @@ class CoverCache private constructor(private val context: Context) {
         scope.launch {
             coverDir.listFiles()?.forEach { it.delete() }
         }
+    }
+
+    fun debugCacheStats(): CacheStatsHook.LruStats? {
+        if (!BuildConfig.DEBUG) {
+            return null
+        }
+        return CacheStatsHook.LruStats(
+            entryCount = memoryCache.snapshot().size,
+            sizeKb = memoryCache.size(),
+            maxSizeKb = memoryCache.maxSize(),
+        )
     }
 
     fun clearAllBlocking() {

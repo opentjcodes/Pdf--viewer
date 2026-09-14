@@ -15,6 +15,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.DebugRootDescription
 import com.gitlab.mudlej.MjPdfReader.core.io.appDateTimeFormatter
 import com.gitlab.mudlej.MjPdfReader.core.io.convertDateString
 import com.gitlab.mudlej.MjPdfReader.core.ui.AppSnackbar
@@ -69,6 +70,7 @@ class UserHighlightsActivity : AppCompatActivity() {
         applyIncognitoOverlayFromIntent()
         binding = ActivityUserHighlightsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        DebugRootDescription.attachLayoutDirection(binding.root)
         setupScreenChrome()
         title = getString(R.string.user_highlights_title)
 

@@ -6,6 +6,7 @@ import android.net.Uri
 import com.gitlab.mudlej.MjPdfReader.data.entity.ReadingStatus
 import com.gitlab.mudlej.MjPdfReader.data.entity.PdfRecord
 import com.gitlab.mudlej.MjPdfReader.data.entity.ScannedPdfEntry
+import com.gitlab.mudlej.MjPdfReader.data.entity.ScannedPdfMetadataState
 import com.gitlab.mudlej.MjPdfReader.core.io.computeHash
 import java.io.File
 import java.time.LocalDateTime
@@ -26,6 +27,9 @@ data class HomeItem(
     val sortKey: String,
     val availability: Availability = Availability.AVAILABLE,
 ) {
+    val stableKey: String
+        get() = uri.normalizeScheme().toString()
+
 
     val available: Boolean
         get() = availability == Availability.AVAILABLE
@@ -89,17 +93,20 @@ data class HomeItem(
             val file = File(entry.path)
             val syntheticKey =
                 "p" + (computeHash(entry.path.toByteArray()) ?: entry.path.hashCode().toString())
+            val contentKey = entry.hash ?: syntheticKey
             return HomeItem(
-                hash = syntheticKey,
+                hash = contentKey,
                 uri = Uri.fromFile(file),
                 title = file.nameWithoutExtension,
                 pageNumber = 0,
-                length = entry.pageCount,
+                length = entry.pageCount.takeIf {
+                    entry.metadataState == ScannedPdfMetadataState.COMPLETE
+                } ?: 0,
                 favorite = false,
                 readingStatus = ReadingStatus.UNSET,
                 lastOpened = LocalDateTime.parse(PdfRecord.UNSET_DATE),
                 isScanOnly = true,
-                coverKey = syntheticKey,
+                coverKey = contentKey,
                 sizeBytes = entry.size,
                 hidden = false,
                 sortKey = sortKeyOf(file.name),

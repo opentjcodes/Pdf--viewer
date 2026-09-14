@@ -2,6 +2,7 @@
 
 package com.gitlab.mudlej.MjPdfReader.ui.gotopage
 
+import android.content.DialogInterface
 import android.net.Uri
 import android.view.LayoutInflater
 import android.view.View
@@ -13,17 +14,14 @@ import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.gitlab.mudlej.MjPdfReader.R
-import com.gitlab.mudlej.MjPdfReader.core.ui.AppSnackbar
 import com.gitlab.mudlej.MjPdfReader.data.Preferences
 import com.gitlab.mudlej.MjPdfReader.databinding.DialogGoToPageBinding
 import com.gitlab.mudlej.MjPdfReader.pdf.PageThumbnailCache
 import com.gitlab.mudlej.MjPdfReader.ui.reader.controls.PdfThemeController
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.snackbar.Snackbar
 
 fun showGoToPageDialog(
     activity: ComponentActivity,
-    view: View,
     pageIndex: Int,
     pdfLength: Int,
     documentUri: Uri?,
@@ -43,17 +41,7 @@ fun showGoToPageDialog(
     val builder = MaterialAlertDialogBuilder(activity)
         .setTitle(activity.getString(R.string.go_to_page))
         .setView(binding.root)
-        .setPositiveButton(activity.getString(R.string.go_to)) { dialog, _ ->
-            val query = binding.editText.text.toString().lowercase().trim()
-            if (query.isEmpty()) {
-                AppSnackbar.make(view, activity.getString(R.string.no_input), Snackbar.LENGTH_SHORT).show()
-                return@setPositiveButton
-            }
-            query.toIntOrNull()?.let { pageNumber ->
-                goToPageFunc(pageNumber - 1)
-            }
-            dialog.dismiss()
-        }
+        .setPositiveButton(activity.getString(R.string.go_to), null)
         .setNegativeButton(activity.getString(R.string.cancel)) { dialog, _ -> dialog.dismiss() }
 
     if (cache != null && showAllPages != null) {
@@ -74,6 +62,20 @@ fun showGoToPageDialog(
         activity.lifecycle.removeObserver(destroyObserver)
     }
     activity.lifecycle.addObserver(destroyObserver)
+
+    fun enteredPageNumber(): Int? = binding.editText.text?.toString()?.trim()?.toIntOrNull()
+    dialog.setOnShowListener {
+        val positiveButton = dialog.getButton(DialogInterface.BUTTON_POSITIVE)
+        positiveButton.isEnabled = enteredPageNumber() != null
+        binding.editText.doAfterTextChanged {
+            positiveButton.isEnabled = enteredPageNumber() != null
+        }
+        positiveButton.setOnClickListener {
+            val pageNumber = enteredPageNumber() ?: return@setOnClickListener
+            goToPageFunc(pageNumber - 1)
+            dialog.dismiss()
+        }
+    }
 
     if (cache != null) {
         val strip = binding.thumbnailStrip

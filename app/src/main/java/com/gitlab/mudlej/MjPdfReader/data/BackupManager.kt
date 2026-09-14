@@ -8,7 +8,9 @@ import android.net.Uri
 import android.os.Build
 import androidx.documentfile.provider.DocumentFile
 import androidx.preference.PreferenceManager
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.BackupDebugHooks
 import com.gitlab.mudlej.MjPdfReader.data.Preferences
 import com.gitlab.mudlej.MjPdfReader.data.annotation.AnnotationJournal
 import com.gitlab.mudlej.MjPdfReader.data.entity.ReadingStatus
@@ -167,6 +169,9 @@ class BackupManager(
     }
 
     fun prepareImport(data: BackupData): ImportPlan {
+        if (BuildConfig.DEBUG && BackupDebugHooks.consumePrepareImportFailure()) {
+            throw BackupException(R.string.backup_error_not_valid)
+        }
         val settings = data.settings?.let { validateSettings(it) }
         return ImportPlan(
             includesHistory = data.includesHistory,

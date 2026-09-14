@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.DebugRootDescription
 import com.gitlab.mudlej.MjPdfReader.pdf.PDF
 import com.gitlab.mudlej.MjPdfReader.databinding.ActivityUserBookmarksBinding
 import com.gitlab.mudlej.MjPdfReader.core.ui.confirmDialog
@@ -45,6 +46,7 @@ class UserBookmarksActivity : AppCompatActivity() {
         applyIncognitoOverlayFromIntent()
         binding = ActivityUserBookmarksBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        DebugRootDescription.attachLayoutDirection(binding.root)
         setupScreenChrome()
         title = getString(R.string.bookmarks)
 

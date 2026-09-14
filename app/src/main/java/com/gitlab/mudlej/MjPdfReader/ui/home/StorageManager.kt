@@ -7,50 +7,66 @@ import android.os.Build
 import android.os.Environment
 import android.os.storage.StorageManager as AndroidStorageManager
 import androidx.core.content.ContextCompat
+import com.gitlab.mudlej.MjPdfReader.core.debug.ScanDebugSignals
 import java.io.File
+import java.io.IOException
 
 class StorageManager {
 
     fun readAllFiles(): Sequence<File> = readAllFiles(listOf(File(ROOT_DIR)))
 
-    fun readAllFiles(roots: List<File>): Sequence<File> {
-        return roots.asSequence().flatMap { root ->
-            root.walk().onEnter { file ->
-                !file.isHidden
-                && file != ANDROID_DIR
-                && file != DATA_DIR
-                && !File(file, ".nomedia").exists()
-            }
+    fun readAllFiles(
+        roots: List<File>,
+        excludedRoots: List<File> = emptyList(),
+        explicitRoots: Boolean = false,
+    ): Sequence<File> = sequence {
+        val pending = ArrayDeque<File>()
+        val excluded = excludedRoots.map { it.absoluteFile.normalize().path }
+        val selected = if (explicitRoots) roots.map { it.absoluteFile.normalize().path }.toSet() else emptySet()
+        roots.asReversed().forEach(pending::addLast)
+        while (pending.isNotEmpty()) {
+            val file = pending.removeLast()
+            val path = file.absoluteFile.normalize().path
+            if (ScanScope.contains(excluded, path)) continue
+            yield(file)
+            if (!mayEnter(file)) continue
+            if (path !in selected && File(file, ".nomedia").exists()) continue
+            ScanDebugSignals.noteFilesystemDirectory()
+            val children = file.listFiles() ?: throw IOException("Cannot list scan directory: $path")
+            for (index in children.indices.reversed()) pending.addLast(children[index])
         }
     }
+
+    private fun mayEnter(file: File): Boolean =
+        file.isDirectory &&
+            !file.isHidden &&
+            file != ANDROID_DIR &&
+            file != DATA_DIR
 
     fun volumeRoots(context: Context): List<File> {
         val roots = LinkedHashMap<String, File>()
         val primary = Environment.getExternalStorageDirectory()
         roots[primary.absolutePath] = primary
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            context.getSystemService(AndroidStorageManager::class.java)
-                ?.storageVolumes
-                ?.forEach { volume ->
-                    val directory = volume.directory ?: return@forEach
-                    if (volume.state == Environment.MEDIA_MOUNTED
-                        || volume.state == Environment.MEDIA_MOUNTED_READ_ONLY
-                    ) {
-                        roots.putIfAbsent(directory.absolutePath, directory)
-                    }
-                }
-        } else {
-            ContextCompat.getExternalFilesDirs(context, null)
-                .filterNotNull()
-                .forEach { filesDir ->
-                    val volumeRoot = filesDir.parentFile?.parentFile?.parentFile?.parentFile
-                        ?: return@forEach
-                    roots.putIfAbsent(volumeRoot.absolutePath, volumeRoot)
-                }
+        volumeDirectories(context).forEach { directory ->
+            roots.putIfAbsent(directory.absolutePath, directory)
         }
-
         return roots.values.filter { it.isDirectory && it.canRead() }
+    }
+
+    private fun volumeDirectories(context: Context): List<File> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            return ContextCompat.getExternalFilesDirs(context, null).mapNotNull { filesDir ->
+                filesDir?.parentFile?.parentFile?.parentFile?.parentFile
+            }
+        }
+        return context.getSystemService(AndroidStorageManager::class.java)
+            ?.storageVolumes
+            ?.mapNotNull { volume ->
+                val directory = volume.directory ?: return@mapNotNull null
+                if (volume.state == Environment.MEDIA_MOUNTED
+                    || volume.state == Environment.MEDIA_MOUNTED_READ_ONLY
+                ) directory else null
+            }.orEmpty()
     }
 
     companion object {

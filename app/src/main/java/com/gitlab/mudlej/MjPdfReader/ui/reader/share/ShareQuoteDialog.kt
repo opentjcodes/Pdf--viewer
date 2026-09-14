@@ -11,8 +11,11 @@ import android.view.View
 import android.widget.EditText
 import android.widget.Toast
 import androidx.core.content.FileProvider
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.ShareQuoteDebug
 import com.gitlab.mudlej.MjPdfReader.core.io.imageShareIntent
+import com.gitlab.mudlej.MjPdfReader.core.ui.toast
 import com.gitlab.mudlej.MjPdfReader.databinding.DialogShareQuoteBinding
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.io.File
@@ -29,9 +32,10 @@ fun showShareQuoteDialog(
     binding.bookNameInput.setText(bookName)
     binding.authorInput.setText(author)
 
-    val trimmedQuote = shortenQuote(quote.trim())
+    val sourceQuote = (if (BuildConfig.DEBUG) ShareQuoteDebug.quoteOverride() else null) ?: quote
+    val trimmedQuote = shortenQuote(sourceQuote.trim())
     binding.shortenedNotice.visibility = if (trimmedQuote != null) View.VISIBLE else View.GONE
-    val cardQuote = trimmedQuote ?: quote
+    val cardQuote = trimmedQuote ?: sourceQuote
 
     val themeChips = listOf(
         binding.themeLight to QuoteCardTheme.LIGHT,
@@ -98,6 +102,9 @@ private fun shortenQuote(quote: String): String? {
 }
 
 private fun shareQuoteBitmap(activity: Activity, bitmap: Bitmap) {
+    if (BuildConfig.DEBUG) {
+        ShareQuoteDebug.onQuoteShared(bitmap)
+    }
     runCatching {
         val shareDir = File(activity.cacheDir, "share").apply { mkdirs() }
         val expiredBefore = System.currentTimeMillis() - CACHE_MAX_AGE_MILLIS
@@ -114,7 +121,7 @@ private fun shareQuoteBitmap(activity: Activity, bitmap: Bitmap) {
         val shareUri = FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", file)
         activity.startActivity(imageShareIntent(activity.getString(R.string.share_quote), fileName, shareUri))
     }.onFailure {
-        Toast.makeText(activity, R.string.share_quote_failed, Toast.LENGTH_SHORT).show()
+        toast(activity, R.string.share_quote_failed, Toast.LENGTH_SHORT)
     }
 }
 

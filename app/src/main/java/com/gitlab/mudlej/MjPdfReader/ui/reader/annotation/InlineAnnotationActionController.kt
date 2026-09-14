@@ -21,6 +21,7 @@ import android.widget.FrameLayout
 import androidx.constraintlayout.widget.ConstraintLayout
 import com.github.barteksc.pdfviewer.PDFView
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.AnnotationTestHooks
 import com.gitlab.mudlej.MjPdfReader.core.io.browserLinkIntent
 import com.gitlab.mudlej.MjPdfReader.core.io.linkIntent
 import com.gitlab.mudlej.MjPdfReader.core.io.pdfDateNow
@@ -262,7 +263,9 @@ class InlineAnnotationActionController(
         if (!canEditDocument()) {
             return
         }
-        if (request == null || !binding.pdfView.addHighlight(request, color, groupKey, createdDate)) {
+        if (request == null || AnnotationTestHooks.consumeHighlightWriteFailure() ||
+            !binding.pdfView.addHighlight(request, color, groupKey, createdDate)
+        ) {
             AppSnackbar.make(binding.root, R.string.highlight_failed, Snackbar.LENGTH_SHORT).show()
             return
         }
@@ -361,7 +364,9 @@ class InlineAnnotationActionController(
         if (!canEditDocument()) {
             return
         }
-        if (request == null || !binding.pdfView.addHighlight(request, color, groupKey, createdDate)) {
+        if (request == null || AnnotationTestHooks.consumeHighlightWriteFailure() ||
+            !binding.pdfView.addHighlight(request, color, groupKey, createdDate)
+        ) {
             AppSnackbar.make(binding.root, R.string.highlight_failed, Snackbar.LENGTH_SHORT).show()
             return
         }

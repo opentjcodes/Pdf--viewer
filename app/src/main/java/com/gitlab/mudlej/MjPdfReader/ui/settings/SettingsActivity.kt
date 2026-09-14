@@ -9,6 +9,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SearchView
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.DebugRootDescription
 import com.gitlab.mudlej.MjPdfReader.core.ui.applyIncognitoNightModeFromIntent
 import com.gitlab.mudlej.MjPdfReader.core.ui.applyIncognitoOverlayFromIntent
 import com.gitlab.mudlej.MjPdfReader.core.ui.setupScreenChrome
@@ -30,6 +31,7 @@ class SettingsActivity : AppCompatActivity(), SettingsFragment.Navigation {
         applyIncognitoOverlayFromIntent()
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        DebugRootDescription.attachLayoutDirection(binding.root)
         setupScreenChrome()
 
         currentPage = savedInstanceState?.getString(CURRENT_PAGE_KEY)?.let(SettingsPage::valueOf)

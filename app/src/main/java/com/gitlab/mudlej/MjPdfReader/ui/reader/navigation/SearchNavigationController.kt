@@ -15,7 +15,9 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.SearchTestHooks
 import com.gitlab.mudlej.MjPdfReader.data.Preferences
 import com.gitlab.mudlej.MjPdfReader.ui.reader.DocumentState
 import com.gitlab.mudlej.MjPdfReader.pdf.PDF
@@ -343,6 +345,9 @@ class SearchNavigationController(
         else {
             currentPosition = if (currentPosition > 0) currentPosition - 1 else hits.lastIndex
         }
+        if (BuildConfig.DEBUG) {
+            SearchTestHooks.noteNavigationAction()
+        }
         showCurrentHit()
     }
 
@@ -359,6 +364,9 @@ class SearchNavigationController(
         }
         else {
             currentPosition = if (currentPosition < hits.lastIndex) currentPosition + 1 else 0
+        }
+        if (BuildConfig.DEBUG) {
+            SearchTestHooks.noteNavigationAction()
         }
         showCurrentHit()
     }
@@ -385,11 +393,16 @@ class SearchNavigationController(
         clearHighlight()
         val matchLength = if (hit.matchLength > 0) hit.matchLength else query.length
         val rawRange = NormalizedTextMapper.toRawRange(rawText, hit.originalIndex, matchLength)
-        val textBounds = if (rawRange == null) {
+        val computedBounds = if (rawRange == null) {
             emptyArray<Rect>()
         } else {
             binding.pdfView.createHighlightText(
                 hit.pageNumber, rawRange.first, rawRange.last + 1 - rawRange.first, true)
+        }
+        val textBounds = if (BuildConfig.DEBUG && SearchTestHooks.consumeSearchHighlightFailure()) {
+            emptyArray()
+        } else {
+            computedBounds
         }
         if (textBounds.isEmpty()) {
             showFailedToHighlightMessage()

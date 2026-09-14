@@ -31,7 +31,7 @@ class ScreenshotController(
     private val binding: ActivityMainBinding,
     private val pdf: DocumentState,
     private val beforeCapture: () -> Unit,
-    private val shareImage: (Uri?) -> Unit,
+    private val shareImage: (Uri?, String) -> Unit,
 ) {
 
     fun takeScreenshot() {
@@ -50,7 +50,7 @@ class ScreenshotController(
 
             val uri = saveImage(bitmap, fileName)
             AppSnackbar.make(binding.root, activity.getString(R.string.screenshot_saved), Snackbar.LENGTH_SHORT).also {
-                it.setAction(activity.getString(R.string.share)) { shareImage(uri) }
+                it.setAction(activity.getString(R.string.share)) { shareImage(uri, fileName) }
                 it.show()
             }
         }
