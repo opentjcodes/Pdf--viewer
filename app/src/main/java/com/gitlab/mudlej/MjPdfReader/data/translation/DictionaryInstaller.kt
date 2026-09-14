@@ -3,7 +3,6 @@
 package com.gitlab.mudlej.MjPdfReader.data.translation
 
 import android.content.Context
-import com.gitlab.mudlej.MjPdfReader.core.debug.DictionaryDebugConfig
 import com.gitlab.mudlej.MjPdfReader.core.net.contentLengthCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
