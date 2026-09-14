@@ -30,6 +30,7 @@ object BackupImportPipeline {
         if (running) {
             return false
         }
+        val suppressRestart = BuildConfig.DEBUG && BackupDebugHooks.shouldSuppressRestart(appContext)
         running = true
         if (BuildConfig.DEBUG) {
             BackupDebugHooks.noteImportStarted()
@@ -83,7 +84,6 @@ object BackupImportPipeline {
             }
             AutoBackupScheduler.cancel(appContext)
             running = false
-            val suppressRestart = BuildConfig.DEBUG && BackupDebugHooks.shouldSuppressRestart(appContext)
             if (BuildConfig.DEBUG) {
                 BackupDebugHooks.noteImportFinished(outcome)
             }

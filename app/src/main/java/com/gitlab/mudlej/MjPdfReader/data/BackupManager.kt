@@ -356,6 +356,7 @@ class BackupManager(
         private const val TMP_MIME_TYPE = "application/octet-stream"
 
         private val excludedSettingKeys = setOf(
+            BackupDebugHooks.SUPPRESS_RESTART_KEY,
             Preferences.firstInstallKey,
             Preferences.showFeaturesDialogKey,
             Preferences.showExitFullscreenTipKey,
