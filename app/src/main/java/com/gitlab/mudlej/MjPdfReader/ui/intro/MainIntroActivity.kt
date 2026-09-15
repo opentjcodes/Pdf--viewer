@@ -10,7 +10,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.viewpager2.widget.ViewPager2
 import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
-import com.gitlab.mudlej.MjPdfReader.core.debug.IntroDebug
 import com.gitlab.mudlej.MjPdfReader.core.ui.setupScreenChrome
 import com.gitlab.mudlej.MjPdfReader.databinding.ActivityIntroBinding
 
@@ -71,9 +70,6 @@ class MainIntroActivity : AppCompatActivity() {
         supportActionBar?.hide()
 
         binding.introPager.adapter = IntroPagerAdapter(pages)
-        if (BuildConfig.DEBUG) {
-            IntroDebug.attach(binding.introPager)
-        }
         createDots()
         binding.introPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
@@ -86,13 +82,6 @@ class MainIntroActivity : AppCompatActivity() {
             if (binding.introPager.currentItem == pages.lastIndex) finish()
             else binding.introPager.currentItem += 1
         }
-    }
-
-    override fun onDestroy() {
-        if (BuildConfig.DEBUG) {
-            IntroDebug.detach(binding.introPager)
-        }
-        super.onDestroy()
     }
 
     private fun createDots() {

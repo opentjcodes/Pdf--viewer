@@ -11,11 +11,11 @@ import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import androidx.annotation.MainThread
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.recyclerview.widget.RecyclerView
 import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
-import com.gitlab.mudlej.MjPdfReader.core.debug.TextModePageSnapshot
 import com.gitlab.mudlej.MjPdfReader.databinding.TextModePageItemBinding
 import com.gitlab.mudlej.MjPdfReader.core.io.plainTextShareIntent
 import com.gitlab.mudlej.MjPdfReader.core.ui.AppSnackbar
@@ -81,6 +81,7 @@ class TextModePageViewHolder(
         }
     }
 
+    @MainThread
     fun debugSnapshot(position: Int): TextModePageSnapshot? {
         if (!BuildConfig.DEBUG) {
             return null

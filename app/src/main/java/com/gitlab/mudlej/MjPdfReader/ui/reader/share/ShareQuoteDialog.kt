@@ -13,7 +13,6 @@ import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
-import com.gitlab.mudlej.MjPdfReader.core.debug.ShareQuoteDebug
 import com.gitlab.mudlej.MjPdfReader.core.io.imageShareIntent
 import com.gitlab.mudlej.MjPdfReader.core.ui.toast
 import com.gitlab.mudlej.MjPdfReader.databinding.DialogShareQuoteBinding

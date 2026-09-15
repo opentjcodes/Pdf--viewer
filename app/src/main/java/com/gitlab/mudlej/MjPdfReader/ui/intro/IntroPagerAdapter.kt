@@ -12,12 +12,12 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.annotation.DrawableRes
+import androidx.annotation.MainThread
 import androidx.annotation.StringRes
 import androidx.core.text.HtmlCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
-import com.gitlab.mudlej.MjPdfReader.core.debug.IntroPageSnapshot
 import com.gitlab.mudlej.MjPdfReader.databinding.IntroFeatureRowItemBinding
 import com.gitlab.mudlej.MjPdfReader.databinding.IntroPageItemBinding
 import com.google.android.material.color.MaterialColors
@@ -41,6 +41,7 @@ class IntroPagerAdapter(
 
     class PageViewHolder(val binding: IntroPageItemBinding) : RecyclerView.ViewHolder(binding.root) {
 
+        @MainThread
         fun debugSnapshot(position: Int): IntroPageSnapshot? {
             if (!BuildConfig.DEBUG) {
                 return null

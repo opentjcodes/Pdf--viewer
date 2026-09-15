@@ -380,6 +380,9 @@ class FullScreenOptionsManager(
                     panel.visibility = View.GONE
                     panel.alpha = 1f
                     panel.translationX = 0f
+                    if (BuildConfig.DEBUG) {
+                        ReaderTestHooks.fullScreenPanelHideTranslation(0f)
+                    }
                 }
             if (BuildConfig.DEBUG) {
                 ReaderTestHooks.fullScreenPanelHideStarted()

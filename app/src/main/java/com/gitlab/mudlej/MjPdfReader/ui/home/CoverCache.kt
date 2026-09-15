@@ -9,7 +9,7 @@ import android.net.Uri
 import android.util.LruCache
 import android.widget.ImageView
 import com.gitlab.mudlej.MjPdfReader.BuildConfig
-import com.gitlab.mudlej.MjPdfReader.core.debug.CacheStatsHook
+import com.gitlab.mudlej.MjPdfReader.core.debug.LruCacheStats
 import com.gitlab.mudlej.MjPdfReader.data.OnlineDocumentStore
 import com.shockwave.pdfium.PdfiumCore
 import java.io.File
@@ -99,15 +99,17 @@ class CoverCache private constructor(private val context: Context) {
         }
     }
 
-    fun debugCacheStats(): CacheStatsHook.LruStats? {
+    fun debugCacheStats(): LruCacheStats? {
         if (!BuildConfig.DEBUG) {
             return null
         }
-        return CacheStatsHook.LruStats(
-            entryCount = memoryCache.snapshot().size,
-            sizeKb = memoryCache.size(),
-            maxSizeKb = memoryCache.maxSize(),
-        )
+        return synchronized(memoryCache) {
+            LruCacheStats(
+                entryCount = memoryCache.snapshot().size,
+                sizeKb = memoryCache.size(),
+                maxSizeKb = memoryCache.maxSize(),
+            )
+        }
     }
 
     fun clearAllBlocking() {
@@ -198,6 +200,13 @@ class CoverCache private constructor(private val context: Context) {
         private const val MAX_DISK_BYTES = 64L * 1024 * 1024
         private const val CROSS_FADE_MILLIS = 150L
         private val BUCKETS = listOf(160, 320, 640)
+
+        fun debugCacheStatsIfInitialized(): LruCacheStats? {
+            if (!BuildConfig.DEBUG) {
+                return null
+            }
+            return INSTANCE?.debugCacheStats()
+        }
 
         fun getInstance(context: Context): CoverCache {
             INSTANCE?.let { return it }

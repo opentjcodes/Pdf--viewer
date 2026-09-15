@@ -391,18 +391,17 @@ class SearchNavigationController(
 
     private fun applyCurrentHit(hit: SearchSessionCache.Hit, rawText: String) {
         clearHighlight()
-        val matchLength = if (hit.matchLength > 0) hit.matchLength else query.length
-        val rawRange = NormalizedTextMapper.toRawRange(rawText, hit.originalIndex, matchLength)
-        val computedBounds = if (rawRange == null) {
+        val textBounds = if (BuildConfig.DEBUG && SearchTestHooks.consumeSearchHighlightFailure()) {
             emptyArray<Rect>()
         } else {
-            binding.pdfView.createHighlightText(
-                hit.pageNumber, rawRange.first, rawRange.last + 1 - rawRange.first, true)
-        }
-        val textBounds = if (BuildConfig.DEBUG && SearchTestHooks.consumeSearchHighlightFailure()) {
-            emptyArray()
-        } else {
-            computedBounds
+            val matchLength = if (hit.matchLength > 0) hit.matchLength else query.length
+            val rawRange = NormalizedTextMapper.toRawRange(rawText, hit.originalIndex, matchLength)
+            if (rawRange == null) {
+                emptyArray()
+            } else {
+                binding.pdfView.createHighlightText(
+                    hit.pageNumber, rawRange.first, rawRange.last + 1 - rawRange.first, true)
+            }
         }
         if (textBounds.isEmpty()) {
             showFailedToHighlightMessage()
