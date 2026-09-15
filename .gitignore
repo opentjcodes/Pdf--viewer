@@ -17,6 +17,7 @@ __pycache__/
 .idea/
 *.iml
 app/build/**
+macrobenchmark/build/**
 .gitignore
 work/
 local.properties
