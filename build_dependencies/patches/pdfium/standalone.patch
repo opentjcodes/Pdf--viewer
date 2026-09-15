@@ -1,0 +1,36 @@
+diff --git a/BUILD.gn b/BUILD.gn
+index b8a3630d7299b16011b2009d134b29ce568bfb92..f5eaedb8c4bac079ab71b2cbc4c5d835ce2d8b4e 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -137,7 +137,12 @@ config("pdfium_common_config") {
+ }
+ 
+ config("pdfium_implementation_config") {
+-  defines = [ "FPDF_IMPLEMENTATION" ]
++  # Export the public API from the standalone shared library without making
++  # all dependencies shared components.
++  defines = [
++    "FPDF_IMPLEMENTATION",
++    "COMPONENT_BUILD",
++  ]
+   visibility = [ ":pdfium_public_headers" ]
+ }
+ 
+@@ -231,12 +236,16 @@ group("pdfium_public_headers") {
+   ]
+ }
+ 
+-component("pdfium") {
++shared_library("pdfium") {
+   output_name = "pdfium"
+   libs = []
+   configs += [ ":pdfium_strict_config" ]
+   public_configs = [ ":pdfium_public_config" ]
+ 
++  if (is_android) {
++    configs -= [ "//build/config/android:hide_all_but_jni_onload" ]
++  }
++
+   deps = [
+     "constants",
+     "core/fpdfapi/page",

@@ -1,0 +1,2261 @@
+diff --git a/core/fpdftext/BUILD.gn b/core/fpdftext/BUILD.gn
+index f2a315c7c8db72e587c3eb6ee64dc1379a8ed32e..6ac7f616a221ece0c9f12282d5e32008503525b3 100644
+--- a/core/fpdftext/BUILD.gn
++++ b/core/fpdftext/BUILD.gn
+@@ -11,6 +11,7 @@ source_set("fpdftext") {
+     "cpdf_linkextract.h",
+     "cpdf_textpage.cpp",
+     "cpdf_textpage.h",
++    "cpdf_textpage_combining.cpp",
+     "cpdf_textpage_semantic.cpp",
+     "cpdf_textpagefind.cpp",
+     "cpdf_textpagefind.h",
+diff --git a/core/fpdftext/cpdf_textpage.cpp b/core/fpdftext/cpdf_textpage.cpp
+index 0b6e8e00ce2384eefbc673b6725f0fc067805dc5..68f2a6e62a603a5e1a821bd64aaaa6bbaae51f38 100644
+--- a/core/fpdftext/cpdf_textpage.cpp
++++ b/core/fpdftext/cpdf_textpage.cpp
+@@ -668,7 +668,8 @@ CPDF_TextPage::TextOrientation CPDF_TextPage::FindTextlineFlowOrientation()
+   int32_t nStartV = nPageHeight;
+   int32_t nEndV = 0;
+   for (const auto& page_obj : *page_) {
+-    if (!page_obj->IsActive() || !page_obj->IsText()) {
++    if (!page_obj->IsActive() || !page_obj->IsText() ||
++        IsAttachedMarkObject(page_obj->AsText(), 0)) {
+       continue;
+     }
+ 
+@@ -787,6 +788,7 @@ void CPDF_TextPage::ProcessObject() {
+   // Collect complete replacement spans before spatial sorting can emit them.
+   size_t next_form_occurrence = 0;
+   CollectActualTextBounds(page_, 0, next_form_occurrence);
++  CollectCombiningMarks();
+   textline_dir_ = FindTextlineFlowOrientation();
+   for (auto it = page_->begin(); it != page_->end(); ++it) {
+     CPDF_PageObject* page_obj = it->get();
+@@ -1108,6 +1110,9 @@ void CPDF_TextPage::ProcessTextObject(
+     const CFX_Matrix& form_matrix,
+     const CPDF_PageObjectHolder* obj_list,
+     CPDF_PageObjectHolder::const_iterator obj_iter) {
++  if (IsAttachedMarkObject(text_obj, form_occurrence_)) {
++    return;
++  }
+   if (fabs(text_obj->GetRect().Width()) < kSizeEpsilon) {
+     return;
+   }
+@@ -1376,7 +1381,8 @@ void CPDF_TextPage::ProcessTransformedTextObjects() {
+     const size_t orig_char_list_index = temp_char_list_.size();
+     const size_t orig_buf_index = temp_text_buf_.GetLength();
+ 
+-    if (ProcessTextObjectItems(text_obj, form_matrix, matrix)) {
++    if (ProcessTextObjectItems(text_obj, form_matrix, matrix,
++                               obj.form_occurrence_)) {
+       ReverseTempTextBufs(orig_char_list_index, orig_buf_index);
+     }
+   }
+@@ -1446,10 +1452,19 @@ bool CPDF_TextPage::IsHyphen(wchar_t current_char) const {
+ }
+ 
+ const CPDF_TextPage::CharInfo* CPDF_TextPage::GetPrevCharInfo() const {
+-  if (!temp_char_list_.empty()) {
+-    return &temp_char_list_.back();
++  // A floating mark retains its own source object and origin, but never becomes
++  // the advancing pen/line anchor for the following text object.
++  for (auto it = temp_char_list_.rbegin(); it != temp_char_list_.rend(); ++it) {
++    if (!it->is_attached_mark()) {
++      return &*it;
++    }
++  }
++  for (auto it = char_list_.rbegin(); it != char_list_.rend(); ++it) {
++    if (!it->is_attached_mark()) {
++      return &*it;
++    }
+   }
+-  return !char_list_.empty() ? &char_list_.back() : nullptr;
++  return nullptr;
+ }
+ 
+ CPDF_TextPage::GenerateCharacter CPDF_TextPage::ProcessInsertObject(
+@@ -1626,8 +1641,9 @@ bool CPDF_TextPage::ProcessGenerateCharacter(GenerateCharacter type,
+ }
+ 
+ bool CPDF_TextPage::ProcessTextObjectItems(CPDF_TextObject* text_object,
+-                                           const CFX_Matrix& form_matrix,
+-                                           const CFX_Matrix& matrix) {
++                                            const CFX_Matrix& form_matrix,
++                                            const CFX_Matrix& matrix,
++                                            size_t form_occurrence) {
+   const float base_space = CalculateBaseSpace(text_object, matrix) +
+                            CalculateBaseSpaceAdjustment(text_object, matrix);
+   RetainPtr<CPDF_Font> const font = text_object->GetFont();
+@@ -1752,6 +1768,7 @@ bool CPDF_TextPage::ProcessTextObjectItems(CPDF_TextObject* text_object,
+         temp_text_buf_.AppendChar(c ? c : 0xfffe);
+         temp_char_list_.push_back(charinfo);
+       }
++      AppendAttachedMarks(text_object, i, form_occurrence);
+     } else if (i == 0) {
+       WideStringView str = temp_text_buf_.AsStringView();
+       if (!str.IsEmpty() && str.Back() == L' ') {
+diff --git a/core/fpdftext/cpdf_textpage.h b/core/fpdftext/cpdf_textpage.h
+index 8de7102d9a32ce6e7e15bd066ba08aa0d35511c4..c17cebf7ed30f96bb43de186f64413866b8da874 100644
+--- a/core/fpdftext/cpdf_textpage.h
++++ b/core/fpdftext/cpdf_textpage.h
+@@ -65,6 +65,8 @@ class CPDF_TextPage {
+ 
+     uint32_t logical_unit() const { return logical_unit_; }
+     bool has_logical_unicode() const { return logical_unicode_; }
++    bool is_attached_mark() const { return attached_mark_; }
++    void set_attached_mark() { attached_mark_ = true; }
+     void set_logical_unit(uint32_t unit, bool logical_unicode) {
+       logical_unit_ = unit;
+       logical_unicode_ = logical_unicode;
+@@ -86,6 +88,7 @@ class CPDF_TextPage {
+    private:
+     CharType char_type_ = CharType::kNormal;
+     bool logical_unicode_ = false;
++    bool attached_mark_ = false;
+     wchar_t unicode_ = 0;  // Above `char_code_` to potentially pack tighter.
+     uint32_t char_code_ = 0;
+     uint32_t logical_unit_ = 0;
+@@ -155,6 +158,14 @@ class CPDF_TextPage {
+   void CollectActualTextBounds(const CPDF_PageObjectHolder* holder,
+                                size_t form_occurrence,
+                                size_t& next_form_occurrence);
++  void CollectCombiningMarks();
++  bool IsAttachedMarkObject(const CPDF_TextObject* text_object,
++                            size_t form_occurrence) const;
++  // Call immediately after emitting the base item's complete Unicode payload,
++  // before reversing glyphs or closing the line. Does not advance the pen.
++  void AppendAttachedMarks(CPDF_TextObject* text_object,
++                           size_t item_index,
++                           size_t form_occurrence);
+   void ProcessObject();
+   bool TryProcessSemanticRtl();
+   void ProcessFormObject(CPDF_FormObject* form_obj,
+@@ -178,8 +189,9 @@ class CPDF_TextPage {
+   // text is RTL with a mirrored transformation matrix, requiring the newly
+   // appended character order to be reversed.
+   bool ProcessTextObjectItems(CPDF_TextObject* text_object,
+-                              const CFX_Matrix& form_matrix,
+-                              const CFX_Matrix& matrix);
++                               const CFX_Matrix& form_matrix,
++                               const CFX_Matrix& matrix,
++                               size_t form_occurrence);
+   const CharInfo* GetPrevCharInfo() const;
+   std::optional<CharInfo> GenerateCharInfo(wchar_t unicode,
+                                            const CFX_Matrix& form_matrix);
+@@ -222,6 +234,11 @@ class CPDF_TextPage {
+   size_t form_occurrence_ = 0;
+   size_t next_form_occurrence_ = 0;
+   uint32_t next_logical_unit_ = 0;
++  // Invocation -> base object -> source item -> original mark character info.
++  std::map<size_t,
++           std::map<const CPDF_TextObject*, std::map<size_t, std::vector<CharInfo>>>>
++      attached_marks_;
++  std::map<size_t, std::set<const CPDF_TextObject*>> attached_mark_objects_;
+   std::map<size_t, std::set<const CPDF_ContentMarkItem*>> processed_actual_text_;
+   std::map<size_t, std::map<const CPDF_ContentMarkItem*, CFX_FloatRect>>
+       actual_text_bounds_;
+diff --git a/core/fpdftext/cpdf_textpage_combining.cpp b/core/fpdftext/cpdf_textpage_combining.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..5a6b40f908c4fe2a7504bc1632544b4b035246cf
+--- /dev/null
++++ b/core/fpdftext/cpdf_textpage_combining.cpp
+@@ -0,0 +1,474 @@
++// Copyright 2026 The PDFium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "core/fpdftext/cpdf_textpage.h"
++
++#include <algorithm>
++#include <array>
++#include <cmath>
++#include <utility>
++
++#include "core/fpdfapi/font/cpdf_font.h"
++#include "core/fpdfapi/page/cpdf_form.h"
++#include "core/fpdfapi/page/cpdf_formobject.h"
++#include "core/fpdfapi/page/cpdf_page.h"
++#include "core/fpdfapi/page/cpdf_textobject.h"
++#include "core/fpdfapi/parser/cpdf_dictionary.h"
++#include "core/fpdftext/unicodenormalizationdata.h"
++#include "core/fxcrt/fx_extension.h"
++#include "core/fxcrt/fx_unicode.h"
++#include "core/fxcrt/span.h"
++
++namespace {
++
++// Matches the glyph dedup threshold in ProcessTextObjectItems().
++constexpr float kDuplicateRatio = 0.07f;
++
++// Use the text extractor's compatibility table for classification, not to
++// rewrite a base's explicit ToUnicode payload.
++DataVector<wchar_t> Normalize(wchar_t wc) {
++  if (static_cast<uint32_t>(wc) > 0xffff) {
++    return {wc};
++  }
++  const uint16_t entry = kUnicodeDataNormalization[wc];
++  if (!entry) {
++    return {wc};
++  }
++  if (entry >= 0x8000) {
++    return {kUnicodeDataNormalizationMap1[entry - 0x8000]};
++  }
++  static constexpr std::array<pdfium::span<const uint16_t>, 3> kMaps = {
++      kUnicodeDataNormalizationMap2, kUnicodeDataNormalizationMap3,
++      kUnicodeDataNormalizationMap4};
++  size_t count = entry >> 12;
++  auto mapping = kMaps[count - 2].subspan(static_cast<size_t>(entry & 0x0fff));
++  if (count == 4) {
++    count = mapping.front();
++    mapping = mapping.subspan<1>();
++  }
++  const auto range = mapping.first(count);
++  return DataVector<wchar_t>(range.begin(), range.end());
++}
++
++bool IsMark(wchar_t wc) {
++  if (pdfium::unicode::GetBidiClass(wc) == BidiClass::kNSM) {
++    return true;
++  }
++  const auto normalized = Normalize(wc);
++  return !normalized.empty() && std::ranges::all_of(normalized, [](wchar_t c) {
++    return pdfium::unicode::GetBidiClass(c) == BidiClass::kNSM;
++  });
++}
++
++bool HasActualText(const CPDF_PageObject* object) {
++  const CPDF_ContentMarks* marks = object->GetContentMarks();
++  for (size_t i = 0; i < marks->CountItems(); ++i) {
++    const auto dict = marks->GetItem(i)->GetParam();
++    if (dict && dict->KeyExist("ActualText")) {
++      return true;
++    }
++  }
++  return false;
++}
++
++}  // namespace
++
++void CPDF_TextPage::CollectCombiningMarks() {
++  attached_marks_.clear();
++  attached_mark_objects_.clear();
++
++  struct Glyph {
++    CharInfo info;
++    size_t item_index;
++    float em;
++    float x_em;
++    bool object_duplicate;
++  };
++  struct Placement {
++    const CPDF_TextObject* text;
++    size_t item_index;
++    size_t occurrence;
++    CFX_PointF origin;
++    float duplicate_distance;
++  };
++  struct PlacementIndex {
++    std::vector<Placement> glyphs;
++    float max_duplicate_distance = 0;
++  };
++  struct BaseIndex {
++    std::vector<Glyph> glyphs;
++    float max_width = 0;
++  };
++  struct MarkObject {
++    size_t occurrence;
++    std::vector<Glyph> glyphs;
++  };
++  std::map<size_t, std::map<const CPDF_Font*, BaseIndex>> indices;
++  std::map<const CPDF_Font*, std::map<uint32_t, PlacementIndex>> placements;
++  std::vector<MarkObject> mark_objects;
++  size_t base_count = 0;
++  size_t mark_count = 0;
++  size_t visited = 0;
++  size_t next_occurrence = 0;
++  // A page-wide fallback, never a prefix repair on an oversized page. Counting
++  // all objects/items also bounds work on non-text and unsupported content.
++  const auto collect = [&](auto&& self, const CPDF_PageObjectHolder* holder,
++                           const CFX_Matrix& form_matrix, size_t occurrence,
++                           bool excluded_scope, size_t depth) -> bool {
++    if (depth > 64) {
++      return false;
++    }
++    for (auto it = holder->begin(); it != holder->end(); ++it) {
++      const auto& object = *it;
++      if (++visited > 100000) {
++        return false;
++      }
++      if (!object->IsActive()) {
++        continue;
++      }
++      if (object->GetContentMarks()->CountItems() > 64) {
++        return false;
++      }
++      const bool excluded = excluded_scope || HasActualText(object.get()) ||
++                            object->general_state().GetFillAlpha() != 1.0f ||
++                            object->general_state().GetSoftMask();
++      if (object->IsForm()) {
++        // Exactly ProcessFormObject's active, depth-first invocation numbering,
++        // including empty/nested forms and forms excluded by ActualText.
++        const auto* form = object->AsForm();
++        const size_t child_occurrence = ++next_occurrence;
++        if (!self(self, form->form(), form->form_matrix() * form_matrix,
++                  child_occurrence, excluded, depth + 1)) {
++          return false;
++        }
++        continue;
++      }
++      CPDF_TextObject* text = object->AsText();
++      if (!text) {
++        continue;
++      }
++      const size_t item_count = text->CountItems();
++      if (item_count > 100000 - visited) {
++        return false;
++      }
++      visited += item_count;
++      const auto font = text->GetFont();
++      if (!font) {
++        continue;
++      }
++      const CFX_Matrix matrix = text->GetTextMatrix() * form_matrix;
++      const float em = text->GetFontSize() * matrix.d;
++      const float x_em = text->GetFontSize() * matrix.a;
++      const bool eligible =
++          !excluded && std::abs(text->GetRect().Width()) >= 0.01f &&
++          text->GetTextRenderMode() == TextRenderingMode::MODE_FILL &&
++          !font->IsVertWriting() && std::isfinite(em) && std::isfinite(x_em) &&
++          em > 0 && x_em > 0 && matrix.a > 0 && matrix.d > 0 &&
++          std::isfinite(matrix.b) && std::isfinite(matrix.c) &&
++          std::abs(matrix.b) <= matrix.a * 0.0001f &&
++          std::abs(matrix.c) <= matrix.d * 0.0001f;
++      // The nonempty-rect branch is independent of extraction state. Reuse the
++      // legacy predicate, including its lack of font/render-mode checks. Do not
++      // let a risky base disappear from scoring and make another owner win.
++      // Empty bounds depend on extraction state, so treat them as risky.
++      const bool object_duplicate =
++          eligible && (text->GetRect().IsEmpty() ||
++                       IsSameAsPreTextObject(text, holder, it));
++      const float duplicate_distance =
++          matrix.TransformXDistance(kDuplicateRatio * text->GetFontSize());
++      if (!std::isfinite(duplicate_distance)) {
++        return false;
++      }
++      std::vector<Glyph> marks;
++      bool mark_only = eligible && item_count != 0;
++      for (size_t i = 0; i < item_count; ++i) {
++        const auto item = text->GetItemInfo(i);
++        const CFX_PointF origin = matrix.Transform(item.origin_);
++        if (!std::isfinite(origin.x) || !std::isfinite(origin.y)) {
++          mark_only = false;
++          continue;
++        }
++        // Glyph dedup sees text excluded from attachment (including invisible,
++        // transparent and ActualText content), and ignores its font size. Keep
++        // those placements without decoding Unicode or loading their ink boxes.
++        auto& placement_index = placements[font.Get()][item.char_code_];
++        placement_index.glyphs.push_back(
++            {text, i, occurrence, origin, duplicate_distance});
++        placement_index.max_duplicate_distance = std::max(
++            placement_index.max_duplicate_distance, duplicate_distance);
++        if (!eligible) {
++          continue;
++        }
++        const WideString unicode = font->UnicodeFromCharCode(item.char_code_);
++        if (unicode.IsEmpty() || unicode.GetLength() > 32 ||
++            !std::ranges::all_of(unicode.span(), [](wchar_t wc) {
++              return u_isprint(wc) &&
++                     !u_hasBinaryProperty(wc,
++                                          UCHAR_DEFAULT_IGNORABLE_CODE_POINT);
++            })) {
++          mark_only = false;
++          continue;
++        }
++        const bool mark = std::ranges::all_of(unicode.span(), IsMark);
++        mark_only &= mark && font->GetCharWidth(item.char_code_) == 0;
++        size_t letters = 0;
++        bool base = !mark;
++        for (wchar_t wc : unicode) {
++          for (wchar_t c : Normalize(wc)) {
++            if (pdfium::unicode::GetBidiClass(c) == BidiClass::kNSM) {
++              continue;
++            }
++            if (c == 0x0640 || !FXSYS_iswalpha(c)) {
++              base = false;
++            }
++            ++letters;
++          }
++        }
++        base &= letters == 1 && font->GetCharWidth(item.char_code_) > 0;
++        const FX_RECT rect = font->GetCharBBox(item.char_code_);
++        const float scale = text->GetFontSize() / 1000;
++        const CFX_FloatRect box = matrix.TransformRect(
++            CFX_FloatRect(rect.left * scale + item.origin_.x,
++                          rect.bottom * scale + item.origin_.y,
++                          rect.right * scale + item.origin_.x,
++                          rect.top * scale + item.origin_.y));
++        // Unlike ordinary extraction, do not invent ink from advance widths.
++        if (!std::isfinite(box.left) || !std::isfinite(box.right) ||
++            !std::isfinite(box.bottom) || !std::isfinite(box.top) ||
++            box.IsEmpty() || box.Width() > 2 * x_em) {
++          mark_only = false;
++          continue;
++        }
++        Glyph glyph{CharInfo(CharType::kNormal, item.char_code_, 0, origin, box,
++                             matrix, text),
++                    i, em, x_em, object_duplicate};
++        if (mark && font->GetCharWidth(item.char_code_) == 0) {
++          if (++mark_count > 2000) {
++            return false;
++          }
++          marks.push_back(glyph);
++        } else if (base) {
++          if (++base_count > 20000) {
++            return false;
++          }
++          auto& index = indices[occurrence][font.Get()];
++          index.max_width = std::max(index.max_width, box.Width());
++          index.glyphs.push_back(glyph);
++        }
++      }
++      if (mark_only && !marks.empty()) {
++        mark_objects.push_back({occurrence, std::move(marks)});
++      }
++    }
++    return true;
++  };
++  if (!collect(collect, page_, CFX_Matrix(), 0, false, 0)) {
++    return;
++  }
++  for (auto& [font, codes] : placements) {
++    for (auto& [code, index] : codes) {
++      std::ranges::sort(index.glyphs, {}, [](const Placement& placement) {
++        return placement.origin.x;
++      });
++    }
++  }
++  const auto duplicate_risk = [&](const Glyph& glyph, size_t occurrence,
++                                  bool mark) {
++    if (glyph.object_duplicate) {
++      return true;
++    }
++    const auto& index = placements.at(glyph.info.text_object()->GetFont().Get())
++                            .at(glyph.info.char_code());
++    const CFX_PointF& origin = glyph.info.origin();
++    const float distance = glyph.info.matrix().TransformXDistance(
++        kDuplicateRatio * glyph.info.text_object()->GetFontSize());
++    // For marks, consider either dedup direction so a slightly larger duplicate
++    // cannot stay in legacy flow while its smaller twin gets attached first.
++    const float radius =
++        mark ? std::max(distance, index.max_duplicate_distance) : distance;
++    auto other = std::ranges::lower_bound(
++        index.glyphs, origin.x - radius, {},
++        [](const Placement& placement) { return placement.origin.x; });
++    size_t examined = 0;
++    for (; other != index.glyphs.end() && other->origin.x <= origin.x + radius;
++         ++other) {
++      if (++examined > 256) {
++        return true;
++      }
++      if (other->text == glyph.info.text_object() &&
++          other->item_index == glyph.item_index &&
++          other->occurrence == occurrence) {
++        continue;
++      }
++      const float threshold =
++          mark ? std::max(distance, other->duplicate_distance) : distance;
++      if (std::abs(other->origin.x - origin.x) < threshold &&
++          std::abs(other->origin.y - origin.y) < threshold) {
++        return true;
++      }
++    }
++    return false;
++  };
++  for (auto& [occurrence, fonts] : indices) {
++    for (auto& [font, index] : fonts) {
++      std::ranges::sort(index.glyphs, {}, [](const Glyph& glyph) {
++        return glyph.info.char_box().left;
++      });
++    }
++  }
++  for (const auto& object : mark_objects) {
++    const CPDF_TextObject* text = object.glyphs.front().info.text_object();
++    auto occurrence = indices.find(object.occurrence);
++    if (occurrence == indices.end()) {
++      continue;
++    }
++    auto font = occurrence->second.find(text->GetFont().Get());
++    if (font == occurrence->second.end()) {
++      continue;
++    }
++    const BaseIndex& index = font->second;
++    std::vector<const Glyph*> owners;
++    for (const Glyph& mark : object.glyphs) {
++      if (duplicate_risk(mark, object.occurrence, true)) {
++        break;
++      }
++      const auto& box = mark.info.char_box();
++      auto candidate = std::ranges::lower_bound(
++          index.glyphs, box.left - index.max_width, {},
++          [](const Glyph& glyph) { return glyph.info.char_box().left; });
++      const Glyph* best = nullptr;
++      float best_score = -1;
++      float runner_up = -1;
++      std::optional<float> baseline;
++      bool ambiguous = false;
++      size_t examined = 0;
++      for (; candidate != index.glyphs.end() &&
++             candidate->info.char_box().left < box.right;
++           ++candidate) {
++        // Dense overlapping columns/overprints fall back rather than doing
++        // O(marks * page glyphs) work. The x index bounds ordinary pages
++        // tightly.
++        if (++examined > 256) {
++          ambiguous = true;
++          break;
++        }
++        const Glyph& base = *candidate;
++        const auto& base_box = base.info.char_box();
++        const float dy = std::abs(mark.info.origin().y - base.info.origin().y);
++        if (std::abs(base.em - mark.em) > 0.02f * mark.em ||
++            std::abs(base.x_em - mark.x_em) > 0.02f * mark.x_em ||
++            dy > mark.em) {
++          continue;
++        }
++        // A centered mark can be wider than a thin stem. Measure coverage of
++        // the smaller ink extent; the competing-owner guards still apply.
++        const float overlap = (std::min(box.right, base_box.right) -
++                               std::max(box.left, base_box.left)) /
++                              std::min(box.Width(), base_box.Width());
++        if (overlap < 0.5f) {
++          continue;
++        }
++        // ILO's raised origins are +0.439/+0.344 em; OHCHR is -0.078 em
++        // and FAO -0.005 em (Tf=1 with Tm=12/13). A one-em window in
++        // page coordinates admits those, not a raw font-size/width threshold.
++        // Competing baselines are uncertain even if one ink overlap is better.
++        if (baseline &&
++            std::abs(*baseline - base.info.origin().y) > 0.1f * mark.em) {
++          ambiguous = true;
++        }
++        if (!baseline) {
++          baseline = base.info.origin().y;
++        }
++        const float center_distance =
++            std::abs((box.left + box.right) / 2 -
++                     (base_box.left + base_box.right) / 2) /
++            base_box.Width();
++        const float score =
++            overlap - 0.25f * center_distance - 0.125f * dy / mark.em;
++        if (score > best_score) {
++          runner_up = best_score;
++          best_score = score;
++          best = &base;
++        } else {
++          runner_up = std::max(runner_up, score);
++        }
++      }
++      // Never resolve ties by source order, object origin, or a nearby-index
++      // window. One unbound glyph keeps the entire mark object in legacy flow.
++      if (ambiguous || !best || best_score < 0.5f ||
++          best_score - runner_up < 0.15f ||
++          duplicate_risk(*best, object.occurrence, false)) {
++        break;
++      }
++      owners.push_back(best);
++    }
++    if (owners.size() != object.glyphs.size()) {
++      continue;
++    }
++    for (size_t i = 0; i < owners.size(); ++i) {
++      const Glyph& base = *owners[i];
++      const CharInfo& source = object.glyphs[i].info;
++      const WideString unicode =
++          text->GetFont()->UnicodeFromCharCode(source.char_code());
++      auto& attached =
++          attached_marks_[object.occurrence][base.info.text_object()]
++                         [base.item_index];
++      for (wchar_t wc : unicode) {
++        CharInfo info = source;
++        info.set_unicode(wc);
++        info.set_logical_unit(0, unicode.GetLength() > 1);
++        attached.push_back(info);
++      }
++    }
++    attached_mark_objects_[object.occurrence].insert(text);
++  }
++}
++
++bool CPDF_TextPage::IsAttachedMarkObject(const CPDF_TextObject* text_object,
++                                         size_t form_occurrence) const {
++  const auto occurrence = attached_mark_objects_.find(form_occurrence);
++  return occurrence != attached_mark_objects_.end() &&
++         occurrence->second.contains(text_object);
++}
++
++void CPDF_TextPage::AppendAttachedMarks(CPDF_TextObject* text_object,
++                                        size_t item_index,
++                                        size_t form_occurrence) {
++  const auto occurrence = attached_marks_.find(form_occurrence);
++  if (occurrence == attached_marks_.end()) {
++    return;
++  }
++  const auto object = occurrence->second.find(text_object);
++  if (object == occurrence->second.end()) {
++    return;
++  }
++  const auto item = object->second.find(item_index);
++  if (item == object->second.end() || temp_char_list_.empty() ||
++      temp_char_list_.back().text_object() != text_object) {
++    return;
++  }
++  CharInfo& base = temp_char_list_.back();
++  if (!base.logical_unit()) {
++    base.set_logical_unit(++next_logical_unit_, base.has_logical_unicode());
++  }
++  const uint32_t unit = base.logical_unit();
++  for (CharInfo mark : item->second) {
++    mark.set_logical_unit(unit, mark.has_logical_unicode());
++    mark.set_attached_mark();
++    // Only mark-only compatibility mappings may expand here. Base spelling,
++    // explicit mapping flags, source objects, origins and ink remain intact.
++    const auto unicode =
++        pdfium::unicode::GetBidiClass(mark.unicode()) == BidiClass::kNSM
++            ? DataVector<wchar_t>{mark.unicode()}
++            : Normalize(mark.unicode());
++    if (unicode.size() != 1 || unicode.front() != mark.unicode()) {
++      mark.set_char_type(CharType::kPiece);
++    }
++    for (wchar_t wc : unicode) {
++      mark.set_unicode(wc);
++      temp_char_list_.push_back(mark);
++      temp_text_buf_.AppendChar(wc);
++    }
++  }
++}
+diff --git a/fpdfsdk/fpdf_text_embeddertest.cpp b/fpdfsdk/fpdf_text_embeddertest.cpp
+index 0131e1cce854c57c3cca46139af9051ea1e60670..5bac4c62f543033acd37d0612add5eafb71da3b0 100644
+--- a/fpdfsdk/fpdf_text_embeddertest.cpp
++++ b/fpdfsdk/fpdf_text_embeddertest.cpp
+@@ -3093,6 +3093,253 @@ TEST_F(FPDFTextEmbedderTest, ArabicMarkedPresentationForm) {
+   }
+ }
+ 
++TEST_F(FPDFTextEmbedderTest, ArabicOrphanMarkWordOrder) {
++  ASSERT_TRUE(OpenDocument("arabic_orphan_mark_order.pdf"));
++  ASSERT_EQ(6, FPDF_GetPageCount(document()));
++  // The mark is on an unrelated word; the exact queried words are unmarked.
++  // V3 deliberately retained the separate mark's unresolved interior. The new
++  // resolver has a unique ordinary owner: mark ink x=114..116 is inside DAL's
++  // x=110..118, not DHAL's x=100..108. Only this resolved-owner case now agrees
++  // with the inline DAL FATHA DHAL control; multi-letter owners remain excluded.
++  static constexpr unsigned short kExpectedText[][13] = {
++      {0x062f, 0x064e, 0x0630, ' ', 0x0628, 0x062a, ' ', 0x062c, 0x062d, '\r',
++       '\n', 0x0633, 0},
++      {0x062f, 0x064e, 0x0630, ' ', 0x0628, 0x062a, ' ', 0x062c, 0x062d, '\r',
++       '\n', 0x0633, 0},
++  };
++  std::string bitmap_hash;
++  // Exercise the unchanged inline control before the newly resolved case.
++  for (int page_index : {1, 0}) {
++    SCOPED_TRACE(page_index);
++    ScopedPage page = LoadScopedPage(page_index);
++    ASSERT_TRUE(page);
++    ScopedFPDFBitmap bitmap = RenderPage(page.get());
++    ASSERT_TRUE(bitmap);
++    if (page_index == 1) {
++      bitmap_hash = HashBitmap(bitmap.get());
++    } else {
++      EXPECT_EQ(bitmap_hash, HashBitmap(bitmap.get()));
++    }
++    ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++    ASSERT_TRUE(text_page);
++    ASSERT_EQ(12, FPDFText_CountChars(text_page.get()));
++    unsigned short buffer[13] = {};
++    EXPECT_EQ(13, FPDFText_GetText(text_page.get(), 0, 12, buffer));
++    EXPECT_THAT(buffer, ElementsAreArray(kExpectedText[page_index]));
++    for (int i = 0; i < 12; ++i) {
++      SCOPED_TRACE(i);
++      EXPECT_EQ(static_cast<unsigned int>(kExpectedText[page_index][i]),
++                FPDFText_GetUnicode(text_page.get(), i));
++      unsigned short character[2] = {};
++      EXPECT_EQ(2, FPDFText_GetText(text_page.get(), i, 1, character));
++      EXPECT_EQ(kExpectedText[page_index][i], character[0]);
++      EXPECT_EQ(0, character[1]);
++    }
++    const int mark_index = 1;
++    EXPECT_EQ(page_index == 1,
++              FPDFText_GetTextObject(text_page.get(), 0) ==
++                  FPDFText_GetTextObject(text_page.get(), mark_index));
++    for (int index : {0, mark_index, 2}) {
++      SCOPED_TRACE(index);
++      const double source_x = index == 2 ? 100 : 110;
++      double x;
++      double y;
++      ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), index, &x, &y));
++      EXPECT_NEAR_THREE_PLACES(source_x, x);
++      EXPECT_NEAR_THREE_PLACES(100, y);
++      RectDouble box;
++      ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), index, &box.left,
++                                     &box.right, &box.bottom, &box.top));
++      CompareFS_RECT_DOUBLE_Three_Places(
++          index == mark_index ? RectDouble{114, 120, 116, 118}
++                              : RectDouble{source_x, 116, source_x + 8, 100},
++          box);
++      const int source_object = page_index == 0 && index == mark_index ? 1 : 0;
++      EXPECT_EQ(FPDFPage_GetObject(page.get(), source_object),
++                FPDFText_GetTextObject(text_page.get(), index));
++      EXPECT_EQ(0, FPDFText_IsGenerated(text_page.get(), index));
++      EXPECT_EQ(index, FPDFText_GetCharIndexAtPos(
++                           text_page.get(),
++                           source_x + (index == mark_index ? 5 : 4),
++                           index == mark_index ? 119 : 108, 0, 0));
++    }
++
++    static constexpr struct {
++      int index;
++      double x;
++    } kQueryGlyphs[] = {{4, 80}, {5, 70}, {7, 50}, {8, 40}};
++    for (const auto& glyph : kQueryGlyphs) {
++      SCOPED_TRACE(glyph.index);
++      double x;
++      double y;
++      ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), glyph.index, &x, &y));
++      EXPECT_NEAR_THREE_PLACES(glyph.x, x);
++      EXPECT_NEAR_THREE_PLACES(100, y);
++      RectDouble box;
++      ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), glyph.index, &box.left,
++                                      &box.right, &box.bottom, &box.top));
++      CompareFS_RECT_DOUBLE_Three_Places({glyph.x, 116, glyph.x + 8, 100}, box);
++    }
++    ScopedFPDFWideString query =
++        GetFPDFWideString(L"\u0628\u062a \u062c\u062d");
++    for (unsigned long flags :
++         {FPDF_MATCHCASE, FPDF_MATCHCASE | FPDF_MATCHWHOLEWORD}) {
++      ScopedFPDFTextFind search(
++          FPDFText_FindStart(text_page.get(), query.get(), flags, 0));
++      ASSERT_TRUE(search);
++      ASSERT_TRUE(FPDFText_FindNext(search.get()));
++      EXPECT_EQ(4, FPDFText_GetSchResultIndex(search.get()));
++      EXPECT_EQ(5, FPDFText_GetSchCount(search.get()));
++      unsigned short matched[6] = {};
++      EXPECT_EQ(6, FPDFText_GetText(text_page.get(), 4, 5, matched));
++      EXPECT_EQ(L"\u0628\u062a \u062c\u062d", GetPlatformWString(matched));
++      EXPECT_FALSE(FPDFText_FindNext(search.get()));
++    }
++  }
++}
++
++TEST_F(FPDFTextEmbedderTest, ArabicOrphanBaseMarkPreserved) {
++  ASSERT_TRUE(OpenDocument("arabic_orphan_mark_order.pdf"));
++  // A separate-object SEEN FATHA is already correct on a multiline page.
++  // Removing the unattached-NSM veto alone reverses this cluster. A word-order
++  // repair must leave both this cluster and its public indices unchanged.
++  static constexpr unsigned short kExpectedText[] = {
++      0x0633, 0x064e, '\r', '\n', 0x0628, 0x062a, ' ', 0x062c, 0x062d, 0};
++  std::string bitmap_hash;
++  for (int page_index : {3, 2}) {
++    SCOPED_TRACE(page_index);
++    ScopedPage page = LoadScopedPage(page_index);
++    ASSERT_TRUE(page);
++    ScopedFPDFBitmap bitmap = RenderPage(page.get());
++    ASSERT_TRUE(bitmap);
++    if (page_index == 3) {
++      bitmap_hash = HashBitmap(bitmap.get());
++    } else {
++      EXPECT_EQ(bitmap_hash, HashBitmap(bitmap.get()));
++    }
++    ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++    ASSERT_TRUE(text_page);
++    ASSERT_EQ(9, FPDFText_CountChars(text_page.get()));
++    unsigned short buffer[10] = {};
++    EXPECT_EQ(10, FPDFText_GetText(text_page.get(), 0, 9, buffer));
++    EXPECT_THAT(buffer, ElementsAreArray(kExpectedText));
++    for (int i = 0; i < 9; ++i) {
++      SCOPED_TRACE(i);
++      EXPECT_EQ(static_cast<unsigned int>(kExpectedText[i]),
++                FPDFText_GetUnicode(text_page.get(), i));
++      unsigned short character[2] = {};
++      EXPECT_EQ(2, FPDFText_GetText(text_page.get(), i, 1, character));
++      EXPECT_EQ(kExpectedText[i], character[0]);
++      EXPECT_EQ(0, character[1]);
++    }
++    EXPECT_EQ(page_index == 3, FPDFText_GetTextObject(text_page.get(), 0) ==
++                                   FPDFText_GetTextObject(text_page.get(), 1));
++    for (int index : {0, 1}) {
++      double x;
++      double y;
++      ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), index, &x, &y));
++      EXPECT_NEAR_THREE_PLACES(100, x);
++      EXPECT_NEAR_THREE_PLACES(100, y);
++      RectDouble box;
++      ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), index, &box.left,
++                                      &box.right, &box.bottom, &box.top));
++      CompareFS_RECT_DOUBLE_Three_Places(index == 0
++                                             ? RectDouble{100, 116, 108, 100}
++                                             : RectDouble{104, 120, 106, 118},
++                                         box);
++    }
++    static constexpr struct {
++      const wchar_t* text;
++      int index;
++      int count;
++    } kQueries[] = {{L"\u0633\u064e", 0, 2},
++                    {L"\u0628\u062a \u062c\u062d", 4, 5}};
++    for (const auto& test_case : kQueries) {
++      ScopedFPDFWideString query = GetFPDFWideString(test_case.text);
++      for (unsigned long flags :
++           {FPDF_MATCHCASE, FPDF_MATCHCASE | FPDF_MATCHWHOLEWORD}) {
++        ScopedFPDFTextFind search(
++            FPDFText_FindStart(text_page.get(), query.get(), flags, 0));
++        ASSERT_TRUE(search);
++        ASSERT_TRUE(FPDFText_FindNext(search.get()));
++        EXPECT_EQ(test_case.index, FPDFText_GetSchResultIndex(search.get()));
++        EXPECT_EQ(test_case.count, FPDFText_GetSchCount(search.get()));
++        EXPECT_FALSE(FPDFText_FindNext(search.get()));
++      }
++    }
++  }
++}
++
++TEST_F(FPDFTextEmbedderTest, ArabicOrphanMarkLogicalWordInteriors) {
++  ASSERT_TRUE(OpenDocument("arabic_orphan_mark_order.pdf"));
++  // Here each word is a two-codepoint ToUnicode glyph. Reorder word blocks,
++  // never reverse/split a logical mapping or reassign its neighboring orphan.
++  static constexpr unsigned short kExpectedText[] = {
++      0x062f, 0x0630, 0x064e, ' ',  0x0628, 0x062a, ' ',
++      0x062c, 0x062d, '\r',   '\n', 0x0633, 0};
++  std::string bitmap_hash;
++  for (int page_index : {5, 4}) {
++    SCOPED_TRACE(page_index);
++    ScopedPage page = LoadScopedPage(page_index);
++    ASSERT_TRUE(page);
++    ScopedFPDFBitmap bitmap = RenderPage(page.get());
++    ASSERT_TRUE(bitmap);
++    if (page_index == 5) {
++      bitmap_hash = HashBitmap(bitmap.get());
++    } else {
++      EXPECT_EQ(bitmap_hash, HashBitmap(bitmap.get()));
++    }
++    ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++    ASSERT_TRUE(text_page);
++    ASSERT_EQ(12, FPDFText_CountChars(text_page.get()));
++    unsigned short buffer[13] = {};
++    EXPECT_EQ(13, FPDFText_GetText(text_page.get(), 0, 12, buffer));
++    EXPECT_THAT(buffer, ElementsAreArray(kExpectedText));
++    for (int i = 0; i < 12; ++i) {
++      SCOPED_TRACE(i);
++      EXPECT_EQ(static_cast<unsigned int>(kExpectedText[i]),
++                FPDFText_GetUnicode(text_page.get(), i));
++      unsigned short character[2] = {};
++      EXPECT_EQ(2, FPDFText_GetText(text_page.get(), i, 1, character));
++      EXPECT_EQ(kExpectedText[i], character[0]);
++      EXPECT_EQ(0, character[1]);
++    }
++    EXPECT_EQ(page_index == 5, FPDFText_GetTextObject(text_page.get(), 0) ==
++                                   FPDFText_GetTextObject(text_page.get(), 2));
++    static constexpr struct {
++      int index;
++      double x;
++    } kWordGlyphs[] = {{0, 80}, {4, 60}, {7, 40}};
++    for (const auto& glyph : kWordGlyphs) {
++      for (int index = glyph.index; index < glyph.index + 2; ++index) {
++        SCOPED_TRACE(index);
++        double x;
++        double y;
++        ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), index, &x, &y));
++        EXPECT_NEAR_THREE_PLACES(glyph.x, x);
++        EXPECT_NEAR_THREE_PLACES(100, y);
++        RectDouble box;
++        ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), index, &box.left,
++                                        &box.right, &box.bottom, &box.top));
++        CompareFS_RECT_DOUBLE_Three_Places({glyph.x, 116, glyph.x + 8, 100},
++                                           box);
++      }
++    }
++    ScopedFPDFWideString query =
++        GetFPDFWideString(L"\u0628\u062a \u062c\u062d");
++    for (unsigned long flags :
++         {FPDF_MATCHCASE, FPDF_MATCHCASE | FPDF_MATCHWHOLEWORD}) {
++      ScopedFPDFTextFind search(
++          FPDFText_FindStart(text_page.get(), query.get(), flags, 0));
++      ASSERT_TRUE(search);
++      ASSERT_TRUE(FPDFText_FindNext(search.get()));
++      EXPECT_EQ(4, FPDFText_GetSchResultIndex(search.get()));
++      EXPECT_EQ(5, FPDFText_GetSchCount(search.get()));
++      EXPECT_FALSE(FPDFText_FindNext(search.get()));
++    }
++  }
++}
++
+ TEST_F(FPDFTextEmbedderTest, ArabicOrphanMarkPositions) {
+   ASSERT_TRUE(OpenDocument("arabic_orphan_mark_positions.pdf"));
+   // A leading zero-width orphan does not establish visual source order.
+@@ -3246,6 +3493,391 @@ TEST_F(FPDFTextEmbedderTest, ArabicOrphanMarkPositions) {
+   }
+ }
+ 
++TEST_F(FPDFTextEmbedderTest, ArabicOrphanCompatibilityMark) {
++  ASSERT_TRUE(OpenDocument("arabic_orphan_compatibility_mark.pdf"));
++  ASSERT_EQ(2, FPDF_GetPageCount(document()));
++  // Raw FC62 has bidi class AL, but normalizes to KASRA SHADDA, both NSM.
++  // V3 intentionally preserved an unresolved interior, not an authored mark
++  // owner. Both separate marks have ink x=114..116, inside ordinary DAL's
++  // x=110..118 and outside DHAL's x=100..108. They now resolve to DAL, retaining
++  // their own source objects and raised origins. The second page shifts the
++  // non-owner DHAL by 0.13 points, without creating a competing owner baseline.
++  // With no orphan left, the existing non-orphan bidi path orders the line;
++  // this does not relax the coarse orphan-word baseline gate. True competing
++  // baselines still preserve legacy output in CombiningObjectAmbiguousFallback.
++  static constexpr struct {
++    const char* name;
++    const wchar_t* text;
++    const wchar_t* query;
++    int query_index;
++    int marked_word_index;
++    double dhal_y;
++    std::array<double, 4> query_x;
++  } kCases[] = {
++      {"CompatibilityMarkOffBaselineHasDalOwner",
++       L"\u062f\u064e\u0650\u0651\u0630 \u0628\u062a \u062c\u062d\r\n\u0633",
++       L"\u0628\u062a \u062c\u062d",
++       6,
++       0,
++       100,
++       {80, 70, 50, 40}},
++      {"NonOwnerDhalOffsetKeepsDalAttachment",
++       L"\u062f\u064e\u0650\u0651\u0630 \u0628\u062a \u062c\u062d\r\n\u0633",
++       L"\u0628\u062a \u062c\u062d",
++       6,
++       0,
++       100.13,
++       {80, 70, 50, 40}},
++  };
++  for (int page_index = 0; page_index < 2; ++page_index) {
++    const auto& test_case = kCases[page_index];
++    SCOPED_TRACE(test_case.name);
++    ScopedPage page = LoadScopedPage(page_index);
++    ASSERT_TRUE(page);
++    ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++    ASSERT_TRUE(text_page);
++    ASSERT_EQ(14, FPDFText_CountChars(text_page.get()));
++    unsigned short buffer[15] = {};
++    ASSERT_EQ(15, FPDFText_GetText(text_page.get(), 0, 14, buffer));
++    const std::wstring text = GetPlatformWString(buffer);
++    const std::wstring expected(test_case.text);
++    EXPECT_EQ(expected, text);
++    EXPECT_EQ(0, std::count(text.begin(), text.end(), L'\ufc62'));
++    for (wchar_t mark : {L'\u064e', L'\u0650', L'\u0651'}) {
++      EXPECT_EQ(1, std::count(text.begin(), text.end(), mark));
++    }
++    for (int i = 0; i < 14; ++i) {
++      SCOPED_TRACE(i);
++      EXPECT_EQ(static_cast<unsigned int>(expected[i]),
++                FPDFText_GetUnicode(text_page.get(), i));
++      unsigned short character[2] = {};
++      EXPECT_EQ(2, FPDFText_GetText(text_page.get(), i, 1, character));
++      EXPECT_EQ(static_cast<unsigned short>(expected[i]), character[0]);
++      EXPECT_EQ(0, character[1]);
++    }
++    // The compatibility glyph expands into two indices sharing its full ink
++    // box and origin, not the base's baseline or an invented mark position.
++    static constexpr int kSourceObjects[] = {2, 3, 4, 4, 1};
++    for (int offset = 0; offset < 5; ++offset) {
++      const int index = test_case.marked_word_index + offset;
++      const double source_x = offset == 4 ? 100 : 110;
++      const double source_y = offset == 4   ? test_case.dhal_y
++                              : offset >= 2 ? 100.13
++                                            : 100;
++      double x;
++      double y;
++      ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), index, &x, &y));
++      EXPECT_NEAR_THREE_PLACES(source_x, x);
++      EXPECT_NEAR_THREE_PLACES(source_y, y);
++      RectDouble box;
++      ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), index, &box.left,
++                                      &box.right, &box.bottom, &box.top));
++      const RectDouble expected_box =
++          offset == 0 || offset == 4
++              ? RectDouble{source_x, source_y + 16, source_x + 8, source_y}
++              : RectDouble{source_x + 4, source_y + 20, source_x + 6,
++                           source_y + 18};
++      CompareFS_RECT_DOUBLE_Three_Places(expected_box, box);
++      EXPECT_EQ(FPDFPage_GetObject(page.get(), kSourceObjects[offset]),
++                FPDFText_GetTextObject(text_page.get(), index));
++      EXPECT_EQ(0, FPDFText_IsGenerated(text_page.get(), index));
++    }
++    const int fatha = test_case.marked_word_index + 1;
++    const int kasra = test_case.marked_word_index + 2;
++    EXPECT_NE(FPDFText_GetTextObject(text_page.get(), fatha),
++              FPDFText_GetTextObject(text_page.get(), kasra));
++    EXPECT_EQ(FPDFText_GetTextObject(text_page.get(), kasra),
++              FPDFText_GetTextObject(text_page.get(), kasra + 1));
++    EXPECT_EQ(test_case.marked_word_index,
++              FPDFText_GetCharIndexAtPos(text_page.get(), 114, 108, 0, 0));
++    EXPECT_EQ(test_case.marked_word_index + 4,
++              FPDFText_GetCharIndexAtPos(text_page.get(), 104,
++                                       test_case.dhal_y + 8, 0, 0));
++    static constexpr int kQueryOffsets[] = {0, 1, 3, 4};
++    for (size_t glyph = 0; glyph < std::size(kQueryOffsets); ++glyph) {
++      const int index = test_case.query_index + kQueryOffsets[glyph];
++      const double source_x = test_case.query_x[glyph];
++      double x;
++      double y;
++      ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), index, &x, &y));
++      EXPECT_NEAR_THREE_PLACES(source_x, x);
++      EXPECT_NEAR_THREE_PLACES(100, y);
++      RectDouble box;
++      ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), index, &box.left,
++                                      &box.right, &box.bottom, &box.top));
++      CompareFS_RECT_DOUBLE_Three_Places({source_x, 116, source_x + 8, 100},
++                                         box);
++    }
++    ScopedFPDFWideString query = GetFPDFWideString(test_case.query);
++    for (unsigned long flags :
++         {FPDF_MATCHCASE, FPDF_MATCHCASE | FPDF_MATCHWHOLEWORD}) {
++      ScopedFPDFTextFind search(
++          FPDFText_FindStart(text_page.get(), query.get(), flags, 0));
++      ASSERT_TRUE(search);
++      ASSERT_TRUE(FPDFText_FindNext(search.get()));
++      EXPECT_EQ(test_case.query_index,
++                FPDFText_GetSchResultIndex(search.get()));
++      EXPECT_EQ(5, FPDFText_GetSchCount(search.get()));
++      unsigned short matched[6] = {};
++      EXPECT_EQ(6, FPDFText_GetText(text_page.get(), test_case.query_index, 5,
++                                    matched));
++      EXPECT_EQ(test_case.query, GetPlatformWString(matched));
++      EXPECT_FALSE(FPDFText_FindNext(search.get()));
++    }
++  }
++}
++
++TEST_F(FPDFTextEmbedderTest, CombiningObjectLatinRaisedMark) {
++  ASSERT_TRUE(OpenDocument("combining_object_attachments.pdf"));
++  ASSERT_EQ(15, FPDF_GetPageCount(document()));
++  for (int page_index : {0, 1}) {
++    SCOPED_TRACE(page_index);
++    ScopedPage page = LoadScopedPage(page_index);
++    ASSERT_TRUE(page);
++    ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++    ASSERT_TRUE(text_page);
++    ASSERT_EQ(6, FPDFText_CountChars(text_page.get()));
++    unsigned short buffer[7] = {};
++    ASSERT_EQ(7, FPDFText_GetText(text_page.get(), 0, 6, buffer));
++    EXPECT_EQ(L"b\u0301c\r\nb", GetPlatformWString(buffer));
++    for (int i : {0, 1, 2, 5}) {
++      EXPECT_EQ(0, FPDFText_IsGenerated(text_page.get(), i));
++    }
++    EXPECT_EQ(FPDFPage_GetObject(page.get(), 1),
++              FPDFText_GetTextObject(text_page.get(), 1));
++    EXPECT_NE(FPDFText_GetTextObject(text_page.get(), 0),
++              FPDFText_GetTextObject(text_page.get(), 1));
++    double x;
++    double y;
++    ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), 1, &x, &y));
++    EXPECT_NEAR_THREE_PLACES(82, x);
++    EXPECT_NEAR_THREE_PLACES(105, y);
++    ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), 0, &x, &y));
++    EXPECT_NEAR_THREE_PLACES(80, x);
++    EXPECT_NEAR_THREE_PLACES(100, y);
++    RectDouble box;
++    ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), 0, &box.left, &box.right,
++                                   &box.bottom, &box.top));
++    CompareFS_RECT_DOUBLE_Three_Places({80, 107.2, 86, 100}, box);
++    ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), 1, &box.left, &box.right,
++                                    &box.bottom, &box.top));
++    CompareFS_RECT_DOUBLE_Three_Places({82, 118.2, 84.4, 114.6}, box);
++    EXPECT_EQ(1, FPDFText_GetCharIndexAtPos(text_page.get(), 83, 116, 0, 0));
++    EXPECT_DOUBLE_EQ(page_index == 0 ? 12 : 1,
++                     FPDFText_GetFontSize(text_page.get(), 1));
++    // Find tolerates generated CR/LF, so success alone is not a regression
++    // test.
++    ScopedFPDFWideString query = GetFPDFWideString(L"b\u0301c");
++    for (unsigned long flags :
++         {FPDF_MATCHCASE, FPDF_MATCHCASE | FPDF_MATCHWHOLEWORD}) {
++      ScopedFPDFTextFind search(
++          FPDFText_FindStart(text_page.get(), query.get(), flags, 0));
++      ASSERT_TRUE(search);
++      ASSERT_TRUE(FPDFText_FindNext(search.get()));
++      EXPECT_EQ(0, FPDFText_GetSchResultIndex(search.get()));
++      EXPECT_EQ(3, FPDFText_GetSchCount(search.get()));
++      unsigned short matched[4] = {};
++      ASSERT_EQ(4, FPDFText_GetText(text_page.get(), 0, 3, matched));
++      EXPECT_EQ(L"b\u0301c", GetPlatformWString(matched));
++      EXPECT_FALSE(FPDFText_FindNext(search.get()));
++    }
++  }
++}
++
++TEST_F(FPDFTextEmbedderTest, CombiningObjectRtlGlyphAttachments) {
++  ASSERT_TRUE(OpenDocument("combining_object_attachments.pdf"));
++  for (int page_index : {2, 3}) {
++    SCOPED_TRACE(page_index);
++    ScopedPage page = LoadScopedPage(page_index);
++    ASSERT_TRUE(page);
++    ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++    ASSERT_TRUE(text_page);
++    const std::wstring expected =
++        page_index == 2 ? L"\u062c \u062a \u0628\u064f\u062f\u0651\r\n\u0628"
++                        : L"\u0628\u064f\u062f\u0651\r\n\u0628";
++    const int count = static_cast<int>(expected.size());
++    ASSERT_EQ(count, FPDFText_CountChars(text_page.get()));
++    std::vector<unsigned short> buffer(count + 1);
++    ASSERT_EQ(count + 1,
++              FPDFText_GetText(text_page.get(), 0, count, buffer.data()));
++    EXPECT_EQ(expected, GetPlatformWString(buffer.data()));
++    for (int i = 0; i < count; ++i) {
++      EXPECT_EQ(static_cast<unsigned int>(expected[i]),
++                FPDFText_GetUnicode(text_page.get(), i));
++    }
++    const int start = page_index == 2 ? 4 : 0;
++    for (int offset : {1, 3}) {
++      const int index = start + offset;
++      const double source_x = offset == 1 ? 92 : 82;
++      const double source_y = page_index == 2 && offset == 3 ? 99.9 : 105;
++      double x;
++      double y;
++      ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), index, &x, &y));
++      EXPECT_NEAR_THREE_PLACES(source_x, x);
++      EXPECT_NEAR_THREE_PLACES(source_y, y);
++      RectDouble box;
++      ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), index, &box.left,
++                                      &box.right, &box.bottom, &box.top));
++      CompareFS_RECT_DOUBLE_Three_Places(
++          {source_x, source_y + 22, source_x + 4, source_y + 16}, box);
++      EXPECT_EQ(0, FPDFText_IsGenerated(text_page.get(), index));
++      EXPECT_EQ(index, FPDFText_GetCharIndexAtPos(text_page.get(), source_x + 2,
++                                                  source_y + 19, 0, 0));
++      EXPECT_NE(FPDFText_GetTextObject(text_page.get(), index - 1),
++                FPDFText_GetTextObject(text_page.get(), index));
++      ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), index - 1, &x, &y));
++      EXPECT_NEAR_THREE_PLACES(source_x - 2, x);
++      EXPECT_NEAR_THREE_PLACES(100, y);
++      ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), index - 1, &box.left,
++                                     &box.right, &box.bottom, &box.top));
++      CompareFS_RECT_DOUBLE_Three_Places(
++          {source_x - 2, 112, source_x + 8, 100}, box);
++    }
++    const auto shadda = FPDFText_GetTextObject(text_page.get(), start + 3);
++    EXPECT_EQ(FPDFPage_GetObject(page.get(), 0), shadda);
++    if (page_index == 2) {
++      EXPECT_NE(shadda, FPDFText_GetTextObject(text_page.get(), start + 1));
++      // Both original spaces remain source characters of the whole base Tj.
++      for (int space : {1, 3}) {
++        EXPECT_EQ(0, FPDFText_IsGenerated(text_page.get(), space));
++        EXPECT_EQ(FPDFPage_GetObject(page.get(), 1),
++                  FPDFText_GetTextObject(text_page.get(), space));
++      }
++    } else {
++      // Distinct item positions within one mark-only TJ, not its object origin.
++      EXPECT_EQ(shadda, FPDFText_GetTextObject(text_page.get(), start + 1));
++    }
++    ScopedFPDFWideString query = GetFPDFWideString(L"\u0628\u064f\u062f\u0651");
++    for (unsigned long flags :
++         {FPDF_MATCHCASE, FPDF_MATCHCASE | FPDF_MATCHWHOLEWORD}) {
++      ScopedFPDFTextFind search(
++          FPDFText_FindStart(text_page.get(), query.get(), flags, 0));
++      ASSERT_TRUE(search);
++      ASSERT_TRUE(FPDFText_FindNext(search.get()));
++      EXPECT_EQ(start, FPDFText_GetSchResultIndex(search.get()));
++      EXPECT_EQ(4, FPDFText_GetSchCount(search.get()));
++      unsigned short matched[5] = {};
++      ASSERT_EQ(5, FPDFText_GetText(text_page.get(), start, 4, matched));
++      EXPECT_EQ(L"\u0628\u064f\u062f\u0651", GetPlatformWString(matched));
++      EXPECT_FALSE(FPDFText_FindNext(search.get()));
++    }
++  }
++}
++
++TEST_F(FPDFTextEmbedderTest, CombiningObjectAmbiguousFallback) {
++  ASSERT_TRUE(OpenDocument("combining_object_attachments.pdf"));
++  static constexpr struct {
++    int page;
++    const wchar_t* text;
++  } kCases[] = {
++      {4, L"bc\r\n\u0301\r\nb"},
++      {5, L"bc\u0301\r\nb"},
++      {6, L"b\r\n\u0301\r\nc\r\nb"},
++      {11, L"b\r\n\u0301 \u0301\r\nb"},
++      {13, L"\u0628\u062a\u0651\u0640\u0651\x0010\u0651\r\n\u0628"},
++  };
++  // Frozen-v3 outputs: ties, competing baselines, distant marks, a partly
++  // resolvable mark object, and non-base mappings must remain untouched.
++  for (const auto& test_case : kCases) {
++    SCOPED_TRACE(test_case.page);
++    ScopedPage page = LoadScopedPage(test_case.page);
++    ASSERT_TRUE(page);
++    ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++    ASSERT_TRUE(text_page);
++    const int count = static_cast<int>(std::wstring(test_case.text).size());
++    ASSERT_EQ(count, FPDFText_CountChars(text_page.get()));
++    std::vector<unsigned short> buffer(count + 1);
++    ASSERT_EQ(count + 1,
++              FPDFText_GetText(text_page.get(), 0, count, buffer.data()));
++    EXPECT_EQ(test_case.text, GetPlatformWString(buffer.data()));
++  }
++}
++
++TEST_F(FPDFTextEmbedderTest, CombiningObjectReplacementAndInvocationFallback) {
++  ASSERT_TRUE(OpenDocument("combining_object_attachments.pdf"));
++  // ActualText on the base, mark or ancestor Form, and an ordinary mark in a
++  // separate Form invocation. Spatial coincidence cannot override provenance.
++  for (int page_index : {7, 8, 9, 14}) {
++    SCOPED_TRACE(page_index);
++    ScopedPage page = LoadScopedPage(page_index);
++    ASSERT_TRUE(page);
++    ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++    ASSERT_TRUE(text_page);
++    ASSERT_EQ(10, FPDFText_CountChars(text_page.get()));
++    unsigned short buffer[11] = {};
++    ASSERT_EQ(11, FPDFText_GetText(text_page.get(), 0, 10, buffer));
++    EXPECT_EQ(L"b\r\n\u0301\r\nc\r\nb", GetPlatformWString(buffer));
++  }
++}
++
++TEST_F(FPDFTextEmbedderTest, CombiningObjectFormInvocations) {
++  ASSERT_TRUE(OpenDocument("combining_object_attachments.pdf"));
++  ScopedPage page = LoadScopedPage(10);
++  ASSERT_TRUE(page);
++  ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++  ASSERT_TRUE(text_page);
++  ASSERT_EQ(11, FPDFText_CountChars(text_page.get()));
++  unsigned short buffer[12] = {};
++  ASSERT_EQ(12, FPDFText_GetText(text_page.get(), 0, 11, buffer));
++  EXPECT_EQ(L"b\u0301c\r\nb\u0301c\r\nb", GetPlatformWString(buffer));
++  for (int index : {1, 6}) {
++    const double dx = index == 1 ? 0 : 40;
++    const double dy = index == 1 ? 0 : -30;
++    double x;
++    double y;
++    ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), index, &x, &y));
++    EXPECT_NEAR_THREE_PLACES(82 + dx, x);
++    EXPECT_NEAR_THREE_PLACES(105 + dy, y);
++    RectDouble box;
++    ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), index, &box.left,
++                                    &box.right, &box.bottom, &box.top));
++    CompareFS_RECT_DOUBLE_Three_Places(
++        {82 + dx, 118.2 + dy, 84.4 + dx, 114.6 + dy}, box);
++    EXPECT_EQ(0, FPDFText_IsGenerated(text_page.get(), index));
++    EXPECT_NE(FPDFText_GetTextObject(text_page.get(), index - 1),
++              FPDFText_GetTextObject(text_page.get(), index));
++  }
++}
++
++TEST_F(FPDFTextEmbedderTest, CombiningObjectCompatibilityPayloads) {
++  ASSERT_TRUE(OpenDocument("combining_object_attachments.pdf"));
++  ScopedPage page = LoadScopedPage(12);
++  ASSERT_TRUE(page);
++  ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++  ASSERT_TRUE(text_page);
++  // Structural base+mark units still normalize ordinary FE91. Explicit FE91
++  // FATHA ToUnicode remains logical, while mark-only FC62 expands to NSMs.
++  const std::wstring expected =
++      L"\u0628\u0628\u0650\u0651\r\n"
++      L"\u0628\ufe91\u064e\u0650\u0651\r\n\u0628";
++  ASSERT_EQ(static_cast<int>(expected.size()),
++            FPDFText_CountChars(text_page.get()));
++  std::vector<unsigned short> buffer(expected.size() + 1);
++  ASSERT_EQ(static_cast<int>(buffer.size()),
++            FPDFText_GetText(text_page.get(), 0,
++                             static_cast<int>(expected.size()), buffer.data()));
++  EXPECT_EQ(expected, GetPlatformWString(buffer.data()));
++  for (int start : {2, 9}) {
++    const double source_y = start == 2 ? 125 : 85;
++    for (int index : {start, start + 1}) {
++      double x;
++      double y;
++      ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), index, &x, &y));
++      EXPECT_NEAR_THREE_PLACES(82, x);
++      EXPECT_NEAR_THREE_PLACES(source_y, y);
++      RectDouble box;
++      ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), index, &box.left,
++                                      &box.right, &box.bottom, &box.top));
++      CompareFS_RECT_DOUBLE_Three_Places({82, source_y + 22, 86, source_y + 16},
++                                         box);
++    }
++    EXPECT_EQ(FPDFText_GetTextObject(text_page.get(), start),
++              FPDFText_GetTextObject(text_page.get(), start + 1));
++    EXPECT_NE(FPDFText_GetTextObject(text_page.get(), start - 1),
++              FPDFText_GetTextObject(text_page.get(), start));
++  }
++}
++
+ TEST_F(FPDFTextEmbedderTest, ViewerRtlPreservesLatinText) {
+   ASSERT_TRUE(OpenDocument("viewer_rtl_ltr_text.pdf"));
+   ScopedPage page = LoadScopedPage(0);
+@@ -3283,3 +3915,215 @@ TEST_F(FPDFTextEmbedderTest, ViewerRtlPreservesLatinText) {
+     EXPECT_FALSE(FPDFText_FindNext(search.get()));
+   }
+ }
++
++namespace {
++
++// Reuse the embedded Type3 source font: code 01 is BEH, code 04 is zero-width
++// FATHA with ink [200,900,300,1000]. These minimal pages already extract BEH
++// FATHA in v3; neither a lost mark nor an extra attached copy is acceptable.
++void CheckCombiningDuplicateFallback(FPDF_DOCUMENT document,
++                                     FPDF_FONT font,
++                                     const std::array<unsigned int, 3>& codes,
++                                     const std::array<float, 3>& sizes,
++                                     bool invisible_first) {
++  ScopedFPDFPage page(
++      FPDFPage_New(document, FPDF_GetPageCount(document), 300, 200));
++  ASSERT_TRUE(page);
++  for (size_t i = 0; i < codes.size(); ++i) {
++    ScopedFPDFPageObject text(
++        FPDFPageObj_CreateTextObj(document, font, sizes[i]));
++    ASSERT_TRUE(text);
++    ASSERT_TRUE(FPDFText_SetCharcodes(text.get(), &codes[i], 1));
++    ASSERT_TRUE(FPDFTextObj_SetTextRenderMode(
++        text.get(), invisible_first && i == 0 ? FPDF_TEXTRENDERMODE_INVISIBLE
++                                              : FPDF_TEXTRENDERMODE_FILL));
++    FPDFPageObj_Transform(text.get(), 1, 0, 0, 1, 100, 100);
++    FPDFPage_InsertObject(page.get(), text.release());
++  }
++  // Disable whole-page semantic reconstruction, which otherwise reintroduces
++  // duplicate marks even in v3. This zero-ink non-text scope emits no Unicode.
++  ScopedFPDFPageObject sentinel(FPDFPageObj_CreateNewRect(0, 0, 0, 0));
++  ASSERT_TRUE(sentinel);
++  const auto mark = FPDFPageObj_AddMark(sentinel.get(), "Span");
++  ASSERT_TRUE(mark);
++  ASSERT_TRUE(FPDFPageObjMark_SetStringParam(document, sentinel.get(), mark,
++                                             "ActualText", ""));
++  FPDFPage_InsertObject(page.get(), sentinel.release());
++  ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++  ASSERT_TRUE(text_page);
++  ASSERT_EQ(2, FPDFText_CountChars(text_page.get()));
++  unsigned short buffer[3] = {};
++  ASSERT_EQ(3, FPDFText_GetText(text_page.get(), 0, 2, buffer));
++  EXPECT_EQ(L"\u0628\u064e", GetPlatformWString(buffer));
++  const int mark_object = codes[1] == 4 ? 1 : 2;
++  for (int i : {0, 1}) {
++    SCOPED_TRACE(i);
++    const unsigned short expected = i == 0 ? 0x0628 : 0x064e;
++    EXPECT_EQ(expected, FPDFText_GetUnicode(text_page.get(), i));
++    unsigned short character[2] = {};
++    ASSERT_EQ(2, FPDFText_GetText(text_page.get(), i, 1, character));
++    EXPECT_EQ(expected, character[0]);
++    EXPECT_EQ(0, character[1]);
++    EXPECT_EQ(0, FPDFText_IsGenerated(text_page.get(), i));
++    EXPECT_EQ(FPDFPage_GetObject(page.get(), i == 0 ? 0 : mark_object),
++              FPDFText_GetTextObject(text_page.get(), i));
++    double x;
++    double y;
++    ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), i, &x, &y));
++    EXPECT_NEAR_THREE_PLACES(100, x);
++    EXPECT_NEAR_THREE_PLACES(100, y);
++    RectDouble box;
++    ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), i, &box.left, &box.right,
++                                    &box.bottom, &box.top));
++    CompareFS_RECT_DOUBLE_Three_Places(
++        i == 0
++            ? RectDouble{100, 100 + 0.8 * sizes[0], 100 + 0.4 * sizes[0], 100}
++            : RectDouble{104, 120, 106, 118},
++        box);
++  }
++  unsigned short mark_text[2] = {};
++  EXPECT_EQ(4u,
++            FPDFTextObj_GetText(FPDFPage_GetObject(page.get(), mark_object),
++                                text_page.get(), mark_text, sizeof(mark_text)));
++  EXPECT_EQ(L"\u064e", GetPlatformWString(mark_text));
++  const auto query = GetFPDFWideString(L"\u0628\u064e");
++  for (unsigned long flags :
++       {FPDF_MATCHCASE, FPDF_MATCHCASE | FPDF_MATCHWHOLEWORD}) {
++    ScopedFPDFTextFind search(
++        FPDFText_FindStart(text_page.get(), query.get(), flags, 0));
++    ASSERT_TRUE(search);
++    ASSERT_TRUE(FPDFText_FindNext(search.get()));
++    EXPECT_EQ(0, FPDFText_GetSchResultIndex(search.get()));
++    EXPECT_EQ(2, FPDFText_GetSchCount(search.get()));
++    EXPECT_FALSE(FPDFText_FindNext(search.get()));
++  }
++}
++
++}  // namespace
++
++TEST_F(FPDFTextEmbedderTest, CombiningDuplicateSizedBasePreservesMark) {
++  ASSERT_TRUE(OpenDocument("arabic_orphan_mark_order.pdf"));
++  ScopedPage source = LoadScopedPage(0);
++  ASSERT_TRUE(source);
++  const auto font = FPDFTextObj_GetFont(FPDFPage_GetObject(source.get(), 0));
++  ASSERT_TRUE(font);
++  // Only the 20pt base qualifies as owner, but glyph dedup retains the 20.6pt
++  // predecessor. Leave FATHA in legacy flow instead of attaching to a lost
++  // base.
++  CheckCombiningDuplicateFallback(document(), font, {1, 1, 4}, {20.6f, 20, 20},
++                                  false);
++}
++
++TEST_F(FPDFTextEmbedderTest, CombiningDuplicateInvisibleBasePreservesMark) {
++  ASSERT_TRUE(OpenDocument("arabic_orphan_mark_order.pdf"));
++  ScopedPage source = LoadScopedPage(0);
++  ASSERT_TRUE(source);
++  const auto font = FPDFTextObj_GetFont(FPDFPage_GetObject(source.get(), 0));
++  ASSERT_TRUE(font);
++  // Attachment excludes the invisible predecessor, but object dedup does not.
++  CheckCombiningDuplicateFallback(document(), font, {1, 1, 4}, {20, 20, 20},
++                                  true);
++}
++
++TEST_F(FPDFTextEmbedderTest, CombiningDuplicateSizedMarksStayDeduplicated) {
++  ASSERT_TRUE(OpenDocument("arabic_orphan_mark_order.pdf"));
++  ScopedPage source = LoadScopedPage(0);
++  ASSERT_TRUE(source);
++  const auto font = FPDFTextObj_GetFont(FPDFPage_GetObject(source.get(), 0));
++  ASSERT_TRUE(font);
++  // Both marks fit the owner's em tolerance. Appending both would bypass
++  // legacy glyph dedup and replace one real mark with two text characters.
++  CheckCombiningDuplicateFallback(document(), font, {1, 4, 4}, {20, 20, 20.2f},
++                                  false);
++}
++
++TEST_F(FPDFTextEmbedderTest, CombiningDuplicateLatinRtlMarkFirst) {
++  ASSERT_TRUE(OpenDocument("combining_duplicate_latin_rtl.pdf"));
++  ScopedPage page = LoadScopedPage(0);
++  ASSERT_TRUE(page);
++  ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++  ASSERT_TRUE(text_page);
++  // The mark cannot attach to the deduplicated 20pt base. The R2L preference
++  // must still put the surviving Latin base before its leading orphan mark.
++  ASSERT_EQ(2, FPDFText_CountChars(text_page.get()));
++  unsigned short buffer[3] = {};
++  ASSERT_EQ(3, FPDFText_GetText(text_page.get(), 0, 2, buffer));
++  EXPECT_EQ(L"A\u0301", GetPlatformWString(buffer));
++  for (int i : {0, 1}) {
++    SCOPED_TRACE(i);
++    const unsigned short expected = i == 0 ? 0x0041 : 0x0301;
++    EXPECT_EQ(expected, FPDFText_GetUnicode(text_page.get(), i));
++    unsigned short character[2] = {};
++    ASSERT_EQ(2, FPDFText_GetText(text_page.get(), i, 1, character));
++    EXPECT_EQ(expected, character[0]);
++    EXPECT_EQ(0, character[1]);
++    EXPECT_EQ(0, FPDFText_IsGenerated(text_page.get(), i));
++    EXPECT_EQ(FPDFPage_GetObject(page.get(), i == 0 ? 1 : 0),
++              FPDFText_GetTextObject(text_page.get(), i));
++    double x;
++    double y;
++    ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), i, &x, &y));
++    EXPECT_NEAR_THREE_PLACES(100, x);
++    EXPECT_NEAR_THREE_PLACES(100, y);
++    RectDouble box;
++    ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), i, &box.left, &box.right,
++                                   &box.bottom, &box.top));
++    CompareFS_RECT_DOUBLE_Three_Places(
++        i == 0 ? RectDouble{100, 116.48, 110.3, 100}
++               : RectDouble{104, 120, 106, 118},
++        box);
++  }
++  const auto query = GetFPDFWideString(L"A\u0301");
++  for (unsigned long flags :
++       {FPDF_MATCHCASE, FPDF_MATCHCASE | FPDF_MATCHWHOLEWORD}) {
++    ScopedFPDFTextFind search(
++        FPDFText_FindStart(text_page.get(), query.get(), flags, 0));
++    ASSERT_TRUE(search);
++    ASSERT_TRUE(FPDFText_FindNext(search.get()));
++    EXPECT_EQ(0, FPDFText_GetSchResultIndex(search.get()));
++    EXPECT_EQ(2, FPDFText_GetSchCount(search.get()));
++    EXPECT_FALSE(FPDFText_FindNext(search.get()));
++    ScopedFPDFTextFind reverse(
++        FPDFText_FindStart(text_page.get(), query.get(), flags, -1));
++    ASSERT_TRUE(reverse);
++    ASSERT_TRUE(FPDFText_FindPrev(reverse.get()));
++    EXPECT_EQ(0, FPDFText_GetSchResultIndex(reverse.get()));
++    EXPECT_EQ(2, FPDFText_GetSchCount(reverse.get()));
++    EXPECT_FALSE(FPDFText_FindPrev(reverse.get()));
++  }
++}
++
++TEST_F(FPDFTextEmbedderTest, CombiningMarkWiderThanBaseInk) {
++  ASSERT_TRUE(OpenDocument("combining_narrow_base.pdf"));
++  ScopedPage page = LoadScopedPage(0);
++  ASSERT_TRUE(page);
++  ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++  ASSERT_TRUE(text_page);
++  ASSERT_EQ(3, FPDFText_CountChars(text_page.get()));
++  unsigned short buffer[4] = {};
++  ASSERT_EQ(4, FPDFText_GetText(text_page.get(), 0, 3, buffer));
++  EXPECT_EQ(L"\u0627\u064b.", GetPlatformWString(buffer));
++  EXPECT_EQ(0x0627u, FPDFText_GetUnicode(text_page.get(), 0));
++  EXPECT_EQ(0x064bu, FPDFText_GetUnicode(text_page.get(), 1));
++  EXPECT_EQ(static_cast<unsigned int>('.'), FPDFText_GetUnicode(text_page.get(), 2));
++  EXPECT_EQ(FPDFPage_GetObject(page.get(), 1),
++            FPDFText_GetTextObject(text_page.get(), 1));
++  EXPECT_EQ(0, FPDFText_IsGenerated(text_page.get(), 1));
++  double x;
++  double y;
++  ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), 1, &x, &y));
++  EXPECT_NEAR_THREE_PLACES(99.98, x);
++  EXPECT_NEAR_THREE_PLACES(100, y);
++  RectDouble box;
++  ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), 1, &box.left, &box.right,
++                                 &box.bottom, &box.top));
++  CompareFS_RECT_DOUBLE_Three_Places(RectDouble{98.4, 120, 102.4, 118}, box);
++  const auto query = GetFPDFWideString(L"\u0627\u064b");
++  ScopedFPDFTextFind search(
++      FPDFText_FindStart(text_page.get(), query.get(), FPDF_MATCHCASE, 0));
++  ASSERT_TRUE(search);
++  ASSERT_TRUE(FPDFText_FindNext(search.get()));
++  EXPECT_EQ(0, FPDFText_GetSchResultIndex(search.get()));
++  EXPECT_EQ(2, FPDFText_GetSchCount(search.get()));
++  EXPECT_FALSE(FPDFText_FindNext(search.get()));
++}
+diff --git a/testing/resources/arabic_orphan_compatibility_mark.in b/testing/resources/arabic_orphan_compatibility_mark.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..8fea083feb65c3eb445346091418c2abce93f996
+--- /dev/null
++++ b/testing/resources/arabic_orphan_compatibility_mark.in
+@@ -0,0 +1,109 @@
++{{header}}
++% Handmade Type3 boxes; no external font or ActualText.
++% Ordinary visual RTL words read DAL-DHAL, BEH-TEH, JEEM-HAH. Query only the
++% unmarked BEH-TEH SPACE JEEM-HAH pair. An unrelated SEEN at y=50 excludes
++% whole-page semantic rescue. FATHA is a separate zero-width Tj at (110,100).
++% Code 0A maps to U+FC62, bidi AL but normalized by PDFium to KASRA SHADDA.
++% It is a mark, not a baseline anchor, at (110,100.13) above the third word.
++% Page 0 keeps all real bases at y=100 and must repair word order.
++% Page 1 changes only the DHAL base origin to y=100.13. Preserve legacy output
++% rather than relaxing the real-base baseline tolerance or certifying order.
++{{object 1 0}} << /Type /Catalog /Pages 2 0 R >>
++endobj
++{{object 2 0}} <<
++  /Type /Pages /Count 2 /Kids [3 0 R 4 0 R]
++  /MediaBox [0 0 300 200]
++  /Resources << /Font << /F1 7 0 R >> >>
++>>
++endobj
++{{object 3 0}} << /Type /Page /Parent 2 0 R /Contents 5 0 R >>
++endobj
++{{object 4 0}} << /Type /Page /Parent 2 0 R /Contents 6 0 R >>
++endobj
++{{object 5 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 40 100 Tm <060305020105> Tj ET
++BT /F1 20 Tf 1 0 0 1 100 100 Tm <08> Tj ET
++BT /F1 20 Tf 1 0 0 1 110 100 Tm <07> Tj ET
++BT /F1 20 Tf 1 0 0 1 110 100 Tm <04> Tj ET
++BT /F1 20 Tf 1 0 0 1 110 100.13 Tm <0A> Tj ET
++BT /F1 20 Tf 1 0 0 1 40 50 Tm <09> Tj ET
++endstream
++endobj
++{{object 6 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 40 100 Tm <060305020105> Tj ET
++BT /F1 20 Tf 1 0 0 1 100 100.13 Tm <08> Tj ET
++BT /F1 20 Tf 1 0 0 1 110 100 Tm <07> Tj ET
++BT /F1 20 Tf 1 0 0 1 110 100 Tm <04> Tj ET
++BT /F1 20 Tf 1 0 0 1 110 100.13 Tm <0A> Tj ET
++BT /F1 20 Tf 1 0 0 1 40 50 Tm <09> Tj ET
++endstream
++endobj
++{{object 7 0}} <<
++  /Type /Font /Subtype /Type3
++  /FontBBox [0 0 500 1000] /FontMatrix [0.001 0 0 0.001 0 0]
++  /CharProcs << /base 8 0 R /mark 9 0 R /space 10 0 R >>
++  /Encoding << /Type /Encoding
++    /Differences [1 /base /base /base /mark /space /base /base /base /base /mark] >>
++  /FirstChar 1 /LastChar 10 /Widths [500 500 500 0 500 500 500 500 500 0]
++  /Resources << >> /ToUnicode 11 0 R
++>>
++endobj
++{{object 8 0}} <<
++  {{streamlen}}
++>>
++stream
++500 0 0 0 400 800 d1
++0 0 400 800 re f
++endstream
++endobj
++{{object 9 0}} <<
++  {{streamlen}}
++>>
++stream
++0 0 200 900 300 1000 d1
++200 900 100 100 re f
++endstream
++endobj
++{{object 10 0}} <<
++  {{streamlen}}
++>>
++stream
++500 0 0 0 0 0 d1
++endstream
++endobj
++{{object 11 0}} <<
++  {{streamlen}}
++>>
++stream
++/CIDInit /ProcSet findresource begin
++12 dict begin begincmap
++/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
++/CMapName /OrphanCompatibilityMark def /CMapType 2 def
++1 begincodespacerange
++<00> <FF>
++endcodespacerange
++10 beginbfchar
++<01> <0628>
++<02> <062A>
++<03> <062C>
++<04> <064E>
++<05> <0020>
++<06> <062D>
++<07> <062F>
++<08> <0630>
++<09> <0633>
++<0A> <FC62>
++endbfchar
++endcmap CMapName currentdict /CMap defineresource pop end end
++endstream
++endobj
++{{xref}}
++{{trailer}}
++{{startxref}}
++%%EOF
+diff --git a/testing/resources/arabic_orphan_mark_order.in b/testing/resources/arabic_orphan_mark_order.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..cd6b742b339686c587cf0347a1e4a57abf5d41d8
+--- /dev/null
++++ b/testing/resources/arabic_orphan_mark_order.in
+@@ -0,0 +1,179 @@
++{{header}}
++% Authored Type 3 boxes; no original fonts, ActualText, or strong LTR text.
++% All pages have an unrelated second baseline to exclude single-line rescue.
++% Pages 0/1 paint identical ordinary-letter words: DAL DHAL, BEH TEH, JEEM HAH
++% in logical RTL order. FATHA at (110,100) is separate Tj / same TJ respectively.
++% The unmarked BEH TEH SPACE JEEM HAH query must work in both. Order word blocks
++% without guessing an orphan's owner: retain legacy DAL DHAL FATHA on page 0,
++% and the source-adjacent DAL FATHA DHAL cluster on page 1.
++% Pages 2/3 paint identical SEEN FATHA above BEH TEH SPACE JEEM HAH, with
++% separate Tj / same TJ respectively. Both already extract exactly in v2.
++% Pages 4/5 repeat the word-order pair using one logical two-letter ToUnicode
++% mapping per word. Preserve each mapping's interior and shared glyph geometry.
++{{object 1 0}} << /Type /Catalog /Pages 2 0 R >>
++endobj
++{{object 2 0}} <<
++  /Type /Pages
++  /Count 6
++  /Kids [3 0 R 4 0 R 5 0 R 6 0 R 7 0 R 8 0 R]
++  /MediaBox [0 0 300 200]
++  /Resources << /Font << /F1 15 0 R /F2 16 0 R >> >>
++>>
++endobj
++{{object 3 0}} << /Type /Page /Parent 2 0 R /Contents 9 0 R >>
++endobj
++{{object 4 0}} << /Type /Page /Parent 2 0 R /Contents 10 0 R >>
++endobj
++{{object 5 0}} << /Type /Page /Parent 2 0 R /Contents 11 0 R >>
++endobj
++{{object 6 0}} << /Type /Page /Parent 2 0 R /Contents 12 0 R >>
++endobj
++{{object 7 0}} << /Type /Page /Parent 2 0 R /Contents 13 0 R >>
++endobj
++{{object 8 0}} << /Type /Page /Parent 2 0 R /Contents 14 0 R >>
++endobj
++{{object 9 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 40 100 Tm <0603050201050807> Tj ET
++BT /F1 20 Tf 1 0 0 1 110 100 Tm <04> Tj ET
++BT /F1 20 Tf 1 0 0 1 40 50 Tm <09> Tj ET
++endstream
++endobj
++{{object 10 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 40 100 Tm [<0603050201050807> 500 <04>] TJ ET
++BT /F1 20 Tf 1 0 0 1 40 50 Tm <09> Tj ET
++endstream
++endobj
++{{object 11 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 100 100 Tm <09> Tj ET
++BT /F1 20 Tf 1 0 0 1 100 100 Tm <04> Tj ET
++BT /F1 20 Tf 1 0 0 1 40 50 Tm <0603050201> Tj ET
++endstream
++endobj
++{{object 12 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 100 100 Tm [<09> 500 <04>] TJ ET
++BT /F1 20 Tf 1 0 0 1 40 50 Tm <0603050201> Tj ET
++endstream
++endobj
++{{object 13 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F2 20 Tf 1 0 0 1 40 100 Tm <0205010503> Tj ET
++BT /F2 20 Tf 1 0 0 1 80 100 Tm <04> Tj ET
++BT /F2 20 Tf 1 0 0 1 40 50 Tm <09> Tj ET
++endstream
++endobj
++{{object 14 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F2 20 Tf 1 0 0 1 40 100 Tm [<0205010503> 500 <04>] TJ ET
++BT /F2 20 Tf 1 0 0 1 40 50 Tm <09> Tj ET
++endstream
++endobj
++{{object 15 0}} <<
++  /Type /Font /Subtype /Type3
++  /FontBBox [0 0 500 1000] /FontMatrix [0.001 0 0 0.001 0 0]
++  /CharProcs << /base 17 0 R /mark 18 0 R /space 19 0 R >>
++  /Encoding << /Type /Encoding
++    /Differences [1 /base /base /base /mark /space /base /base /base /base] >>
++  /FirstChar 1 /LastChar 9 /Widths [500 500 500 0 500 500 500 500 500]
++  /Resources << >> /ToUnicode 20 0 R
++>>
++endobj
++{{object 16 0}} <<
++  /Type /Font /Subtype /Type3
++  /FontBBox [0 0 500 1000] /FontMatrix [0.001 0 0 0.001 0 0]
++  /CharProcs << /base 17 0 R /mark 18 0 R /space 19 0 R >>
++  /Encoding << /Type /Encoding
++    /Differences [1 /base /base /base /mark /space /base /base /base /base] >>
++  /FirstChar 1 /LastChar 9 /Widths [500 500 500 0 500 500 500 500 500]
++  /Resources << >> /ToUnicode 21 0 R
++>>
++endobj
++{{object 17 0}} <<
++  {{streamlen}}
++>>
++stream
++500 0 0 0 400 800 d1
++0 0 400 800 re f
++endstream
++endobj
++{{object 18 0}} <<
++  {{streamlen}}
++>>
++stream
++0 0 200 900 300 1000 d1
++200 900 100 100 re f
++endstream
++endobj
++{{object 19 0}} <<
++  {{streamlen}}
++>>
++stream
++500 0 0 0 0 0 d1
++endstream
++endobj
++{{object 20 0}} <<
++  {{streamlen}}
++>>
++stream
++/CIDInit /ProcSet findresource begin
++12 dict begin begincmap
++/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
++/CMapName /OrphanOrdinary def /CMapType 2 def
++1 begincodespacerange
++<00> <FF>
++endcodespacerange
++9 beginbfchar
++<01> <0628>
++<02> <062A>
++<03> <062C>
++<04> <064E>
++<05> <0020>
++<06> <062D>
++<07> <062F>
++<08> <0630>
++<09> <0633>
++endbfchar
++endcmap CMapName currentdict /CMap defineresource pop end end
++endstream
++endobj
++{{object 21 0}} <<
++  {{streamlen}}
++>>
++stream
++/CIDInit /ProcSet findresource begin
++12 dict begin begincmap
++/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
++/CMapName /OrphanLogicalWords def /CMapType 2 def
++1 begincodespacerange
++<00> <FF>
++endcodespacerange
++6 beginbfchar
++<01> <0628062A>
++<02> <062C062D>
++<03> <062F0630>
++<04> <064E>
++<05> <0020>
++<09> <0633>
++endbfchar
++endcmap CMapName currentdict /CMap defineresource pop end end
++endstream
++endobj
++{{xref}}
++{{trailer}}
++{{startxref}}
++%%EOF
+diff --git a/testing/resources/combining_duplicate_latin_rtl.in b/testing/resources/combining_duplicate_latin_rtl.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..cb206d669f815a34cec39508258285d185ba94d8
+--- /dev/null
++++ b/testing/resources/combining_duplicate_latin_rtl.in
+@@ -0,0 +1,74 @@
++{{header}}
++% Authored A + COMBINING ACUTE, painted mark / duplicate base / base.
++% Preserve latin-r2l-size3pct-dx0-MDB.pdf's sizes, positions and Type3 ink.
++% The zero-width mark remains unattached because its 20pt owner is deduplicated.
++{{object 1 0}} <<
++  /Type /Catalog /Pages 2 0 R
++  /ViewerPreferences << /Direction /R2L >>
++>>
++endobj
++{{object 2 0}} <<
++  /Type /Pages /Count 1 /Kids [3 0 R] /MediaBox [0 0 300 200]
++>>
++endobj
++{{object 3 0}} <<
++  /Type /Page /Parent 2 0 R
++  /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R
++>>
++endobj
++{{object 4 0}} <<
++  /Type /Font /Subtype /Type3
++  /FontBBox [0 0 2000 1000] /FontMatrix [0.001 0 0 0.001 0 0]
++  /CharProcs << /base 6 0 R /mark 7 0 R >>
++  /Encoding << /Type /Encoding /Differences [1 /base 4 /mark] >>
++  /FirstChar 1 /LastChar 4 /Widths [500 500 500 0]
++  /Resources << >> /ToUnicode 8 0 R
++>>
++endobj
++{{object 5 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 0 Tr 1 0 0 1 100 100 Tm <04> Tj ET
++BT /F1 20.6 Tf 0 Tr 1 0 0 1 100 100 Tm <01> Tj ET
++BT /F1 20 Tf 0 Tr 1 0 0 1 100 100 Tm <01> Tj ET
++endstream
++endobj
++{{object 6 0}} <<
++  {{streamlen}}
++>>
++stream
++500 0 0 0 500 800 d1
++0 0 500 800 re f
++endstream
++endobj
++{{object 7 0}} <<
++  {{streamlen}}
++>>
++stream
++0 0 200 900 300 1000 d1
++200 900 100 100 re f
++endstream
++endobj
++{{object 8 0}} <<
++  {{streamlen}}
++>>
++stream
++/CIDInit /ProcSet findresource begin
++12 dict begin begincmap
++/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
++/CMapName /CombiningDuplicateLatin def /CMapType 2 def
++1 begincodespacerange
++<00> <FF>
++endcodespacerange
++2 beginbfchar
++<01> <0041>
++<04> <0301>
++endbfchar
++endcmap CMapName currentdict /CMap defineresource pop end end
++endstream
++endobj
++{{xref}}
++{{trailer}}
++{{startxref}}
++%%EOF
+diff --git a/testing/resources/combining_narrow_base.in b/testing/resources/combining_narrow_base.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..e976645ff32963c5e73f6c845a1e9edde2abf7ee
+--- /dev/null
++++ b/testing/resources/combining_narrow_base.in
+@@ -0,0 +1,62 @@
++{{header}}
++% A zero-advance mark centered over a thin alef is wider than its base ink.
++{{object 1 0}} << /Type /Catalog /Pages 2 0 R /ViewerPreferences << /Direction /R2L >> >>
++endobj
++{{object 2 0}} << /Type /Pages /Count 1 /Kids [3 0 R] /MediaBox [0 0 300 200] >>
++endobj
++{{object 3 0}} << /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
++endobj
++{{object 4 0}} <<
++  /Type /Font /Subtype /Type3
++  /FontBBox [-79 0 200 1000] /FontMatrix [0.001 0 0 0.001 0 0]
++  /CharProcs << /base 6 0 R /mark 7 0 R /period 8 0 R >>
++  /Encoding << /Type /Encoding /Differences [1 /base /mark /period] >>
++  /FirstChar 1 /LastChar 3 /Widths [100 0 100]
++  /Resources << >> /ToUnicode 9 0 R
++>>
++endobj
++{{object 5 0}} << {{streamlen}} >>
++stream
++BT /F1 20 Tf 1 0 0 1 97.2 100 Tm <03> Tj ET
++BT /F1 20 Tf 1 0 0 1 99.98 100 Tm <02> Tj ET
++BT /F1 20 Tf 1 0 0 1 100 100 Tm <01> Tj ET
++/Span << /ActualText () >> BDC 0 0 0 0 re f EMC
++endstream
++endobj
++{{object 6 0}} << {{streamlen}} >>
++stream
++100 0 0 0 40 800 d1
++0 0 40 800 re f
++endstream
++endobj
++{{object 7 0}} << {{streamlen}} >>
++stream
++0 0 -79 900 121 1000 d1
++-79 900 200 100 re f
++endstream
++endobj
++{{object 8 0}} << {{streamlen}} >>
++stream
++100 0 0 0 40 40 d1
++0 0 40 40 re f
++endstream
++endobj
++{{object 9 0}} << {{streamlen}} >>
++stream
++/CIDInit /ProcSet findresource begin
++12 dict begin begincmap
++/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
++/CMapName /NarrowBase def /CMapType 2 def
++1 begincodespacerange <00> <FF> endcodespacerange
++3 beginbfchar
++<01> <0627>
++<02> <064B>
++<03> <002E>
++endbfchar
++endcmap CMapName currentdict /CMap defineresource pop end end
++endstream
++endobj
++{{xref}}
++{{trailer}}
++{{startxref}}
++%%EOF
+diff --git a/testing/resources/combining_object_attachments.in b/testing/resources/combining_object_attachments.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..f8cd1b5184946b13ec86d08448a2987b9b5eacd2
+--- /dev/null
++++ b/testing/resources/combining_object_attachments.in
+@@ -0,0 +1,304 @@
++{{header}}
++% Rectangular Type3 ink with explicit ToUnicode. Every page has multiple lines
++% so the single-line semantic helper cannot hide a mark-object flow failure.
++% 0/1: raised Latin mark, equivalent Tf12/Tm1 and Tf1/Tm12 factorizations.
++% 2: RTL marks, including FAO's whole-base-object/explicit-space sort barrier.
++% 3: two marks in one TJ, at distinct glyph positions, committed together.
++% 4/5: tied adjacent bases / two plausible baselines. Do not guess ownership.
++% 6: real distant baseline; 7/8/9: base/mark/ancestor-Form ActualText guards.
++% 10: repeated Form calls, with nested empty calls affecting occurrence IDs.
++% 11: one mark in the TJ is unbound, so neither mark may be detached.
++% 12: ordinary presentation form versus explicit multi-codepoint ToUnicode.
++% 13: multi-letter ligature, tatweel and unknown mapping cannot own marks.
++% 14: spatial overlap across a Form invocation is not attachment evidence.
++{{object 1 0}} << /Type /Catalog /Pages 2 0 R >>
++endobj
++{{object 2 0}} <<
++  /Type /Pages /Count 15
++  /Kids [3 0 R 4 0 R 5 0 R 6 0 R 7 0 R 8 0 R 9 0 R 10 0 R 11 0 R 12 0 R 13 0 R 14 0 R 15 0 R 16 0 R 17 0 R]
++  /MediaBox [0 0 300 200]
++  /Resources << /Font << /F1 40 0 R >> /XObject << /Fm 45 0 R /Empty 46 0 R /Mark 47 0 R >> >>
++>>
++endobj
++{{object 3 0}} << /Type /Page /Parent 2 0 R /Contents 20 0 R >>
++endobj
++{{object 4 0}} << /Type /Page /Parent 2 0 R /Contents 21 0 R >>
++endobj
++{{object 5 0}} << /Type /Page /Parent 2 0 R /Contents 22 0 R >>
++endobj
++{{object 6 0}} << /Type /Page /Parent 2 0 R /Contents 23 0 R >>
++endobj
++{{object 7 0}} << /Type /Page /Parent 2 0 R /Contents 24 0 R >>
++endobj
++{{object 8 0}} << /Type /Page /Parent 2 0 R /Contents 25 0 R >>
++endobj
++{{object 9 0}} << /Type /Page /Parent 2 0 R /Contents 26 0 R >>
++endobj
++{{object 10 0}} << /Type /Page /Parent 2 0 R /Contents 27 0 R >>
++endobj
++{{object 11 0}} << /Type /Page /Parent 2 0 R /Contents 28 0 R >>
++endobj
++{{object 12 0}} << /Type /Page /Parent 2 0 R /Contents 29 0 R >>
++endobj
++{{object 13 0}} << /Type /Page /Parent 2 0 R /Contents 30 0 R >>
++endobj
++{{object 14 0}} << /Type /Page /Parent 2 0 R /Contents 31 0 R >>
++endobj
++{{object 15 0}} << /Type /Page /Parent 2 0 R /Contents 32 0 R >>
++endobj
++{{object 16 0}} << /Type /Page /Parent 2 0 R /Contents 33 0 R >>
++endobj
++{{object 17 0}} << /Type /Page /Parent 2 0 R /Contents 34 0 R >>
++endobj
++{{object 20 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 12 Tf 1 0 0 1 80 100 Tm <01> Tj ET
++BT /F1 12 Tf 1 0 0 1 82 105 Tm <02> Tj ET
++BT /F1 12 Tf 1 0 0 1 86 100 Tm <0A> Tj ET
++BT /F1 12 Tf 1 0 0 1 30 40 Tm <01> Tj ET
++endstream
++endobj
++{{object 21 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 1 Tf 12 0 0 12 80 100 Tm <01> Tj ET
++BT /F1 1 Tf 12 0 0 12 82 105 Tm <02> Tj ET
++BT /F1 1 Tf 12 0 0 12 86 100 Tm <0A> Tj ET
++BT /F1 1 Tf 12 0 0 12 30 40 Tm <01> Tj ET
++endstream
++endobj
++{{object 22 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 82 99.9 Tm <08> Tj ET
++BT /F1 20 Tf 1 0 0 1 80 100 Tm <0403060506> Tj ET
++BT /F1 20 Tf 1 0 0 1 92 105 Tm <09> Tj ET
++BT /F1 20 Tf 1 0 0 1 130 100 Tm <07> Tj ET
++BT /F1 20 Tf 1 0 0 1 30 40 Tm <03> Tj ET
++endstream
++endobj
++{{object 23 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 82 105 Tm [<08> -500 <09>] TJ ET
++BT /F1 20 Tf 1 0 0 1 80 100 Tm <0403> Tj ET
++BT /F1 20 Tf 1 0 0 1 30 40 Tm <03> Tj ET
++endstream
++endobj
++{{object 24 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 12 Tf 1 0 0 1 80 100 Tm <01> Tj ET
++BT /F1 12 Tf 1 0 0 1 82 100 Tm <0A> Tj ET
++BT /F1 12 Tf 1 0 0 1 82.8 105 Tm <02> Tj ET
++BT /F1 12 Tf 1 0 0 1 30 40 Tm <01> Tj ET
++endstream
++endobj
++{{object 25 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 12 Tf 1 0 0 1 80 100 Tm <01> Tj ET
++BT /F1 12 Tf 1 0 0 1 80 110 Tm <0A> Tj ET
++BT /F1 12 Tf 1 0 0 1 82 105 Tm <02> Tj ET
++BT /F1 12 Tf 1 0 0 1 30 40 Tm <01> Tj ET
++endstream
++endobj
++{{object 26 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 12 Tf 1 0 0 1 80 100 Tm <01> Tj ET
++BT /F1 12 Tf 1 0 0 1 82 130 Tm <02> Tj ET
++BT /F1 12 Tf 1 0 0 1 86 100 Tm <0A> Tj ET
++BT /F1 12 Tf 1 0 0 1 30 40 Tm <01> Tj ET
++endstream
++endobj
++{{object 27 0}} <<
++  {{streamlen}}
++>>
++stream
++/Span << /ActualText <FEFF0062> >> BDC
++BT /F1 12 Tf 1 0 0 1 80 100 Tm <01> Tj ET
++EMC
++BT /F1 12 Tf 1 0 0 1 82 105 Tm <02> Tj ET
++BT /F1 12 Tf 1 0 0 1 86 100 Tm <0A> Tj ET
++BT /F1 12 Tf 1 0 0 1 30 40 Tm <01> Tj ET
++endstream
++endobj
++{{object 28 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 12 Tf 1 0 0 1 80 100 Tm <01> Tj ET
++/Span << /ActualText <FEFF0301> >> BDC
++BT /F1 12 Tf 1 0 0 1 82 105 Tm <02> Tj ET
++EMC
++BT /F1 12 Tf 1 0 0 1 86 100 Tm <0A> Tj ET
++BT /F1 12 Tf 1 0 0 1 30 40 Tm <01> Tj ET
++endstream
++endobj
++{{object 29 0}} <<
++  {{streamlen}}
++>>
++stream
++/Span << /ActualText <FEFF0062> >> BDC /Fm Do EMC
++BT /F1 12 Tf 1 0 0 1 30 40 Tm <01> Tj ET
++endstream
++endobj
++{{object 30 0}} <<
++  {{streamlen}}
++>>
++stream
++/Empty Do /Fm Do
++q 1 0 0 1 40 -30 cm /Fm Do Q
++BT /F1 12 Tf 1 0 0 1 30 40 Tm <01> Tj ET
++endstream
++endobj
++{{object 31 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 12 Tf 1 0 0 1 80 100 Tm <01> Tj ET
++BT /F1 12 Tf 1 0 0 1 82 105 Tm [<02> -3000 <02>] TJ ET
++BT /F1 12 Tf 1 0 0 1 30 40 Tm <01> Tj ET
++endstream
++endobj
++{{object 32 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 80 120 Tm <0B03> Tj ET
++BT /F1 20 Tf 1 0 0 1 82 125 Tm <0D> Tj ET
++BT /F1 20 Tf 1 0 0 1 80 80 Tm <0C03> Tj ET
++BT /F1 20 Tf 1 0 0 1 82 85 Tm <0D> Tj ET
++BT /F1 20 Tf 1 0 0 1 30 40 Tm <03> Tj ET
++endstream
++endobj
++{{object 33 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 80 140 Tm <0E> Tj ET
++BT /F1 20 Tf 1 0 0 1 82 145 Tm <08> Tj ET
++BT /F1 20 Tf 1 0 0 1 80 100 Tm <0F> Tj ET
++BT /F1 20 Tf 1 0 0 1 82 105 Tm <08> Tj ET
++BT /F1 20 Tf 1 0 0 1 80 60 Tm <10> Tj ET
++BT /F1 20 Tf 1 0 0 1 82 65 Tm <08> Tj ET
++BT /F1 20 Tf 1 0 0 1 30 20 Tm <03> Tj ET
++endstream
++endobj
++{{object 34 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 12 Tf 1 0 0 1 80 100 Tm <01> Tj ET
++/Mark Do
++BT /F1 12 Tf 1 0 0 1 86 100 Tm <0A> Tj ET
++BT /F1 12 Tf 1 0 0 1 30 40 Tm <01> Tj ET
++endstream
++endobj
++{{object 40 0}} <<
++  /Type /Font /Subtype /Type3
++  /FontBBox [0 0 500 1100] /FontMatrix [0.001 0 0 0.001 0 0]
++  /CharProcs << /base 41 0 R /mark 42 0 R /space 43 0 R >>
++  /Encoding << /Type /Encoding
++    /Differences [1 /base /mark /base /base /base /space /base /mark /mark /base /base /base /mark /base /base /base]
++  >>
++  /FirstChar 1 /LastChar 16
++  /Widths [500 0 500 500 500 500 500 0 0 500 500 500 0 500 500 500]
++  /Resources << >> /ToUnicode 44 0 R
++>>
++endobj
++{{object 41 0}} <<
++  {{streamlen}}
++>>
++stream
++500 0 0 0 500 600 d1
++0 0 500 600 re f
++endstream
++endobj
++{{object 42 0}} <<
++  {{streamlen}}
++>>
++stream
++0 0 0 800 200 1100 d1
++0 800 200 300 re f
++endstream
++endobj
++{{object 43 0}} <<
++  {{streamlen}}
++>>
++stream
++500 0 0 0 0 0 d1
++endstream
++endobj
++{{object 44 0}} <<
++  {{streamlen}}
++>>
++stream
++/CIDInit /ProcSet findresource begin
++12 dict begin begincmap
++/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
++/CMapName /CombiningObjectAttachments def /CMapType 2 def
++1 begincodespacerange
++<00> <FF>
++endcodespacerange
++15 beginbfchar
++<01> <0062>
++<02> <0301>
++<03> <0628>
++<04> <062F>
++<05> <062A>
++<06> <0020>
++<07> <062C>
++<08> <0651>
++<09> <064F>
++<0A> <0063>
++<0B> <FE91>
++<0C> <FE91064E>
++<0D> <FC62>
++<0E> <0628062A>
++<0F> <0640>
++endbfchar
++endcmap CMapName currentdict /CMap defineresource pop end end
++endstream
++endobj
++{{object 45 0}} <<
++  /Type /XObject /Subtype /Form /BBox [0 0 300 200]
++  /Resources << /Font << /F1 40 0 R >> /XObject << /Empty 46 0 R >> >>
++  {{streamlen}}
++>>
++stream
++/Empty Do
++BT /F1 12 Tf 1 0 0 1 80 100 Tm <01> Tj ET
++BT /F1 12 Tf 1 0 0 1 82 105 Tm <02> Tj ET
++BT /F1 12 Tf 1 0 0 1 86 100 Tm <0A> Tj ET
++endstream
++endobj
++{{object 46 0}} <<
++  /Type /XObject /Subtype /Form /BBox [0 0 300 200] /Resources << >>
++  {{streamlen}}
++>>
++stream
++endstream
++endobj
++{{object 47 0}} <<
++  /Type /XObject /Subtype /Form /BBox [0 0 300 200]
++  /Resources << /Font << /F1 40 0 R >> >>
++  {{streamlen}}
++>>
++stream
++BT /F1 12 Tf 1 0 0 1 82 105 Tm <02> Tj ET
++endstream
++endobj
++{{xref}}
++{{trailer}}
++{{startxref}}
++%%EOF
