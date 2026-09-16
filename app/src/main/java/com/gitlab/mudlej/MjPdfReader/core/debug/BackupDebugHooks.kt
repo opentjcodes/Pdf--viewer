@@ -3,6 +3,7 @@
 package com.gitlab.mudlej.MjPdfReader.core.debug
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.preference.PreferenceManager
 import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import java.util.concurrent.atomic.AtomicBoolean
@@ -22,12 +23,25 @@ object BackupDebugHooks {
 
     private val prepareImportFailurePending = AtomicBoolean(false)
     private val importCompletions = AtomicInteger(0)
+    private val wipeWarnings = AtomicInteger(0)
 
     @Volatile
     private var importRunning = false
 
     @Volatile
     private var lastImportOutcome = ""
+
+    @Volatile
+    private var wipeWarningInitialLabel = ""
+
+    @Volatile
+    private var wipeWarningShownAtUptimeMillis = 0L
+
+    @Volatile
+    private var wipeWarningArmedAtUptimeMillis = 0L
+
+    @Volatile
+    private var wipeWarningInitiallyDisabled = false
 
     fun shouldSuppressRestart(context: Context): Boolean {
         if (!BuildConfig.DEBUG) {
@@ -75,4 +89,32 @@ object BackupDebugHooks {
     fun importCompletions(): Int = importCompletions.get()
 
     fun lastImportOutcome(): String = lastImportOutcome
+
+    fun noteWipeWarningShown(initialLabel: String, initiallyDisabled: Boolean) {
+        if (!BuildConfig.DEBUG) {
+            return
+        }
+        wipeWarningInitialLabel = initialLabel
+        wipeWarningInitiallyDisabled = initiallyDisabled
+        wipeWarningShownAtUptimeMillis = SystemClock.uptimeMillis()
+        wipeWarningArmedAtUptimeMillis = 0L
+        wipeWarnings.incrementAndGet()
+    }
+
+    fun noteWipeWarningArmed() {
+        if (!BuildConfig.DEBUG) {
+            return
+        }
+        wipeWarningArmedAtUptimeMillis = SystemClock.uptimeMillis()
+    }
+
+    fun wipeWarnings(): Int = wipeWarnings.get()
+
+    fun wipeWarningInitialLabel(): String = wipeWarningInitialLabel
+
+    fun wipeWarningShownAtUptimeMillis(): Long = wipeWarningShownAtUptimeMillis
+
+    fun wipeWarningArmedAtUptimeMillis(): Long = wipeWarningArmedAtUptimeMillis
+
+    fun wipeWarningInitiallyDisabled(): Boolean = wipeWarningInitiallyDisabled
 }

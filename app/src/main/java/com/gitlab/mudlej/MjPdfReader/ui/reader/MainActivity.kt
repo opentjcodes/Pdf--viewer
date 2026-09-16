@@ -136,6 +136,10 @@ class MainActivity : AppCompatActivity(), ReaderUi {
             clearIncognitoNightMode()
         }
         super.onCreate(savedInstanceState)
+        if (BuildConfig.DEBUG && intent.getBooleanExtra(DEBUG_PROCESS_BOOTSTRAP_EXTRA, false)) {
+            finishAndRemoveTask()
+            return
+        }
         if (incognito) {
             applyIncognitoOverlay()
         }
@@ -179,7 +183,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
         if (!BuildConfig.DEBUG || !::binding.isInitialized || isDestroyed) {
             return null
         }
-        return ReaderAnnotationDebug(binding.pdfView, vm, this)
+        return ReaderAnnotationDebug(binding.pdfView, vm, this, annotationController)
     }
 
     private fun openInitialDocument(savedInstanceState: Bundle?) {
@@ -819,6 +823,10 @@ class MainActivity : AppCompatActivity(), ReaderUi {
         binding.progressBar.visibility = View.GONE
         binding.progressBar.isIndeterminate = true
         binding.progressBar.progress = 0
+    }
+
+    companion object {
+        const val DEBUG_PROCESS_BOOTSTRAP_EXTRA = "mjpdf.debug.bootstrap_process"
     }
 
     private fun askForPdfPassword() {

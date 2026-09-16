@@ -371,9 +371,10 @@ class FullScreenOptionsManager(
             }
             animator.start()
         } else if (panel.visibility == View.VISIBLE) {
+            val targetTranslationX = slideOffset()
             val animator = panel.animate()
                 .alpha(0f)
-                .translationX(slideOffset())
+                .translationX(targetTranslationX)
                 .setDuration(HIDE_ANIMATION_MILLIS)
                 .setInterpolator(LinearInterpolator())
                 .withEndAction {
@@ -385,7 +386,7 @@ class FullScreenOptionsManager(
                     }
                 }
             if (BuildConfig.DEBUG) {
-                ReaderTestHooks.fullScreenPanelHideStarted()
+                ReaderTestHooks.fullScreenPanelHideStarted(targetTranslationX)
                 animator.setUpdateListener {
                     ReaderTestHooks.fullScreenPanelHideTranslation(panel.translationX)
                 }

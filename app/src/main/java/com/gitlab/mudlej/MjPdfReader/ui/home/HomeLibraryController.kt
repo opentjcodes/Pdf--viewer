@@ -12,6 +12,7 @@ import com.gitlab.mudlej.MjPdfReader.data.entity.ScannedPdfEntry
 import com.gitlab.mudlej.MjPdfReader.data.entity.ScannedPdfMetadataState
 import com.gitlab.mudlej.MjPdfReader.data.entity.SourceFingerprint
 import com.gitlab.mudlej.MjPdfReader.data.entity.fingerprint
+import com.gitlab.mudlej.MjPdfReader.core.debug.HomeRelinkTestHooks
 import com.gitlab.mudlej.MjPdfReader.ui.home.scan.LibraryIndex
 import com.gitlab.mudlej.MjPdfReader.ui.home.scan.ScanPhase
 import java.io.File
@@ -59,30 +60,36 @@ class HomeLibraryController(
             scanIndex.phase !in setOf(ScanPhase.IDLE, ScanPhase.INCOMPLETE) ||
             !historyPolicy.canRecord() || !isCurrent()
         ) return
-        val candidates = scanIndex.entries.filter {
-            it.hash != null && it.metadataState == ScannedPdfMetadataState.COMPLETE &&
-                ScanScope.contains(scanIndex.scopeRoots, it.path)
-        }.groupBy { it.hash }
-        for (record in records) {
-            if (availability[record.uri.toString()] != Availability.MISSING) continue
-            if (!historyPolicy.canRecord() || !isCurrent()) return
-            val recordCandidates = candidates[record.hash] ?: continue
-            val stillMissing = withContext(Dispatchers.IO) {
-                probe.availabilityOf(record.uri) == Availability.MISSING
-            }
-            if (!stillMissing) continue
-            for (entry in recordCandidates) {
-                val file = File(entry.path)
-                val destination = Uri.fromFile(file)
-                if (record.uri == destination) continue
-                val repaired = pdfRepository.repairRecordIdentity(record, destination, file.nameWithoutExtension) {
-                    historyPolicy.canRecord() && isCurrent() &&
-                        (record.uri.scheme != "file" || record.uri.path?.let { File(it).canRead() } != true) &&
-                        file.canRead() && SourceFingerprint.normalized(file.path, file.length(), file.lastModified()) == entry.fingerprint &&
-                        historyPolicy.canRecord() && isCurrent()
+        HomeRelinkTestHooks.noteStarted()
+        try {
+            HomeRelinkTestHooks.awaitRelease()
+            val candidates = scanIndex.entries.filter {
+                it.hash != null && it.metadataState == ScannedPdfMetadataState.COMPLETE &&
+                    ScanScope.contains(scanIndex.scopeRoots, it.path)
+            }.groupBy { it.hash }
+            for (record in records) {
+                if (availability[record.uri.toString()] != Availability.MISSING) continue
+                if (!historyPolicy.canRecord() || !isCurrent()) return
+                val recordCandidates = candidates[record.hash] ?: continue
+                val stillMissing = withContext(Dispatchers.IO) {
+                    probe.availabilityOf(record.uri) == Availability.MISSING
                 }
-                if (repaired) break
+                if (!stillMissing) continue
+                for (entry in recordCandidates) {
+                    val file = File(entry.path)
+                    val destination = Uri.fromFile(file)
+                    if (record.uri == destination) continue
+                    val repaired = pdfRepository.repairRecordIdentity(record, destination, file.nameWithoutExtension) {
+                        historyPolicy.canRecord() && isCurrent() &&
+                            (record.uri.scheme != "file" || record.uri.path?.let { File(it).canRead() } != true) &&
+                            file.canRead() && SourceFingerprint.normalized(file.path, file.length(), file.lastModified()) == entry.fingerprint &&
+                            historyPolicy.canRecord() && isCurrent()
+                    }
+                    if (repaired) break
+                }
             }
+        } finally {
+            HomeRelinkTestHooks.noteFinished()
         }
     }
 

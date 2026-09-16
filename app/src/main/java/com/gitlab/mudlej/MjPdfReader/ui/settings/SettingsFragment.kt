@@ -18,7 +18,9 @@ import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceGroup
 import androidx.preference.PreferenceScreen
 import android.widget.Toast
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.BackupDebugHooks
 import com.gitlab.mudlej.MjPdfReader.core.ui.toast
 import com.gitlab.mudlej.MjPdfReader.data.Preferences
 import com.gitlab.mudlej.MjPdfReader.data.ReadingLayout
@@ -584,6 +586,13 @@ class SettingsFragment : PreferenceFragmentCompat() {
             confirmButton.setTextColor(MaterialColors.getColor(confirmButton, androidx.appcompat.R.attr.colorError))
             confirmButton.isEnabled = false
             val label = getString(R.string.backup_import_wipe_action)
+            if (BuildConfig.DEBUG) {
+                confirmButton.text = "$label (3)"
+            }
+            BackupDebugHooks.noteWipeWarningShown(
+                confirmButton.text.toString(),
+                initiallyDisabled = !confirmButton.isEnabled,
+            )
             val countdown = object : CountDownTimer(3000, 250) {
                 override fun onTick(millisUntilFinished: Long) {
                     confirmButton.text = "$label (${millisUntilFinished / 1000 + 1})"
@@ -592,6 +601,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 override fun onFinish() {
                     confirmButton.text = label
                     confirmButton.isEnabled = true
+                    BackupDebugHooks.noteWipeWarningArmed()
                 }
             }
             countdown.start()

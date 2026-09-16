@@ -39,6 +39,10 @@ object ReaderTestHooks {
     var fullScreenPanelHidePeakTranslationX = 0f
         private set
 
+    @Volatile
+    var fullScreenPanelHideTargetTranslationX = 0f
+        private set
+
     fun cropDetectionStarted() {
         if (!BuildConfig.DEBUG) {
             return
@@ -64,11 +68,12 @@ object ReaderTestHooks {
         cropDetectionOutcome = CROP_SKIPPED
     }
 
-    fun fullScreenPanelHideStarted() {
+    fun fullScreenPanelHideStarted(targetTranslationX: Float) {
         if (!BuildConfig.DEBUG) {
             return
         }
         fullScreenPanelHidePeakTranslationX = 0f
+        fullScreenPanelHideTargetTranslationX = targetTranslationX
         fullScreenPanelTranslationX = 0f
     }
 
@@ -92,5 +97,6 @@ object ReaderTestHooks {
         cropDetectionRunOutcome = CROP_IDLE
         fullScreenPanelTranslationX = 0f
         fullScreenPanelHidePeakTranslationX = 0f
+        fullScreenPanelHideTargetTranslationX = 0f
     }
 }

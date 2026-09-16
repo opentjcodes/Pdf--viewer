@@ -16,6 +16,7 @@ class ReaderAnnotationDebug(
     private val pdfView: PDFView,
     private val vm: ReaderViewModel,
     private val ui: ReaderUi,
+    private val annotationController: AnnotationController? = null,
 ) {
     @WorkerThread
     fun dumpPageHighlights(pageIndex: Int): String {
@@ -85,5 +86,13 @@ class ReaderAnnotationDebug(
         }
         vm.isSavingAnnotations = saving
         ui.updateDirtyUi()
+    }
+
+    @MainThread
+    fun clearCurrentSaveDestination() {
+        if (!BuildConfig.DEBUG) {
+            return
+        }
+        annotationController?.setCurrentSaveDestination(null, durable = false)
     }
 }

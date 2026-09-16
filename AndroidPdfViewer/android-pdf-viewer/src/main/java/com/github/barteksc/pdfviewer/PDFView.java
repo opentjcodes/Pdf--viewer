@@ -4043,6 +4043,30 @@ public class PDFView extends RelativeLayout {
         AndroidPreviewBitmaps.debugReuseRecycles.set(0);
     }
 
+    public static int debugPreviewDecodeFailures() {
+        if (!debugStateEnabled) {
+            return 0;
+        }
+        return AndroidPreviewBitmaps.debugDecodeFailures.get();
+    }
+
+    public static void debugForgetPreviewDecodeFailures() {
+        if (!debugStateEnabled) {
+            return;
+        }
+        AndroidPreviewBitmaps.debugDecodeFailures.set(0);
+    }
+
+    public void debugInvalidatePreviewPage(int page) {
+        if (!debugStateEnabled) {
+            return;
+        }
+        PreviewStore<Bitmap> store = previewStore;
+        if (store != null) {
+            store.invalidatePage(page);
+        }
+    }
+
     public DebugCacheStats readCacheStats() {
         if (!debugStateEnabled) {
             return null;
