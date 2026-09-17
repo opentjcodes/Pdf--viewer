@@ -57,7 +57,7 @@ android {
         multiDexEnabled = true
         vectorDrawables.useSupportLibrary = true
 
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner "com.gitlab.mudlej.MjPdfReader.suite.MjPdfTestRunner"
         testInstrumentationRunnerArguments clearPackageData: 'true'
 
         def crashAppId = project.findProperty("AI") ?: ""
