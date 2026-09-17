@@ -32,6 +32,7 @@ import com.gitlab.mudlej.MjPdfReader.core.io.canWriteToDownloadFolder
 import com.gitlab.mudlej.MjPdfReader.core.io.computeHash
 import com.gitlab.mudlej.MjPdfReader.core.io.DocumentIdentity
 import com.gitlab.mudlej.MjPdfReader.core.io.computeTailHash
+import com.gitlab.mudlej.MjPdfReader.core.io.ensurePdfFileName
 import com.gitlab.mudlej.MjPdfReader.core.io.getFileName
 import com.gitlab.mudlej.MjPdfReader.core.io.publicDownloadsCopy
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -569,7 +570,7 @@ class AnnotationSaveController(
 
     private fun writeRescueCopy(tmp: File): String? = runCatching {
         val dir = File(activity.filesDir, RESCUE_DIR).apply { mkdirs() }
-        val displayName = suggestedAnnotatedFileName()
+        val displayName = ensurePdfFileName(suggestedAnnotatedFileName())
         val rescue = File(dir, "${System.currentTimeMillis()}-$displayName")
         tmp.inputStream().use { input ->
             FileOutputStream(rescue).use { output ->

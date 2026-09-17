@@ -779,6 +779,7 @@ class ReaderComposition(
     private fun toggleIncognito() {
         vm.incognito = !vm.incognito
         vm.pendingIncognitoNotice = vm.incognito
+        annotationController.discardUnrecoverableDirtyState()
         activity.recreate()
     }
 

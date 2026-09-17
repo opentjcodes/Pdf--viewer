@@ -23,7 +23,7 @@ object DurableCopyStore {
     class SavedCopy(val uri: Uri, val isPublic: Boolean)
 
     fun saveCopy(context: Context, source: Uri, displayName: String, expectedHash: String?): SavedCopy? {
-        val fileName = sanitizeFileName(displayName)
+        val fileName = ensurePdfFileName(displayName)
         val publicCopy = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             saveToMediaStore(context, source, fileName)
         } else if (canWriteToPublicStorage(context)) {
@@ -130,22 +130,6 @@ object DurableCopyStore {
         return candidate
     }
 
-    private fun sanitizeFileName(displayName: String): String {
-        val cleaned = displayName
-            .replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001F]"), "_")
-            .trim()
-            .trim('.')
-        var baseName = cleaned
-        if (baseName.endsWith(PDF_SUFFIX, ignoreCase = true)) {
-            baseName = baseName.dropLast(PDF_SUFFIX.length)
-        }
-        baseName = baseName.trim().trim('.')
-        if (baseName.isBlank()) {
-            baseName = FALLBACK_BASE_NAME
-        }
-        return baseName.take(MAX_BASE_NAME_LENGTH) + PDF_SUFFIX
-    }
-
     private fun canWriteToPublicStorage(context: Context): Boolean {
         return ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
             PackageManager.PERMISSION_GRANTED
@@ -163,7 +147,5 @@ object DurableCopyStore {
     private const val PRIVATE_FOLDER_NAME = "imported"
     private const val PDF_SUFFIX = ".pdf"
     private const val PARTIAL_SUFFIX = ".part"
-    private const val FALLBACK_BASE_NAME = "Shared PDF"
-    private const val MAX_BASE_NAME_LENGTH = 120
     private const val MAX_NAME_ATTEMPTS = 100
 }

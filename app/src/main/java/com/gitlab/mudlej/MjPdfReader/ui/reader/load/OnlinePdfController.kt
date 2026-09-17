@@ -19,6 +19,7 @@ import com.gitlab.mudlej.MjPdfReader.core.io.canWriteToDownloadFolder
 import com.gitlab.mudlej.MjPdfReader.core.io.urlForLog
 import com.gitlab.mudlej.MjPdfReader.core.net.contentLengthCompat
 import com.gitlab.mudlej.MjPdfReader.core.io.copyFileToDirectory
+import com.gitlab.mudlej.MjPdfReader.core.io.ensurePdfFileName
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.textfield.TextInputLayout
@@ -53,25 +54,40 @@ class OnlinePdfController(
         data object GenericError : DownloadResult()
     }
 
-    fun showOpenOnlinePdfDialog() {
+    fun showOpenOnlinePdfDialog(
+        initialUri: Uri? = null,
+        onCancel: (() -> Unit)? = null,
+        onConfirmed: (() -> Unit)? = null,
+    ) {
         val inputLayout = activity.layoutInflater.inflate(R.layout.input_layout, null) as TextInputLayout
         inputLayout.hint = activity.getString(R.string.online_pdf_link)
         inputLayout.setStartIconDrawable(R.drawable.ic_link)
         inputLayout.editText?.apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
             setSingleLine(true)
+            setText(initialUri?.toString().orEmpty())
         }
 
-        var confirmedHttpLink: String? = null
+        var confirmedHttpLink = initialUri
+            ?.takeIf { it.scheme.equals("http", ignoreCase = true) }
+            ?.toString()
         val dialog = MaterialAlertDialogBuilder(activity)
             .setTitle(R.string.open_online_pdf)
             .setView(inputLayout)
             .setPositiveButton(R.string.open_online_pdf, null)
-            .setNegativeButton(R.string.cancel) { dialog, _ -> dialog.dismiss() }
+            .setNegativeButton(R.string.cancel) { dialog, _ ->
+                onCancel?.invoke()
+                dialog.dismiss()
+            }
+            .setOnCancelListener { onCancel?.invoke() }
             .create()
 
         dialog.setOnShowListener {
             val openButton = dialog.getButton(DialogInterface.BUTTON_POSITIVE)
+            if (confirmedHttpLink != null) {
+                openButton.setText(R.string.proceed_anyway)
+                inputLayout.error = activity.getString(R.string.http_online_pdf_warning)
+            }
             openButton.setOnClickListener {
                 val link = inputLayout.editText?.text?.toString()?.trim().orEmpty()
                 val uri = link.toUri()
@@ -91,6 +107,7 @@ class OnlinePdfController(
                     return@setOnClickListener
                 }
 
+                onConfirmed?.invoke()
                 dialog.dismiss()
                 openConfirmedLink(uri)
             }
@@ -165,11 +182,11 @@ class OnlinePdfController(
     }
 
     private fun download(url: String, allowInsecureRedirect: Boolean): DownloadResult {
-        var currentUrl = URL(url)
-        val startedSecure = currentUrl.protocol.equals("https", ignoreCase = true)
-        var redirects = 0
         var connection: HttpURLConnection? = null
         try {
+            var currentUrl = URL(url)
+            val startedSecure = currentUrl.protocol.equals("https", ignoreCase = true)
+            var redirects = 0
             while (true) {
                 val conn = (currentUrl.openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
@@ -303,7 +320,7 @@ class OnlinePdfController(
     }
 
     private fun trySaveToDownloads(file: File, showSuccessMessage: Boolean) {
-        val finalName = pdf.name
+        val finalName = ensurePdfFileName(pdf.name)
         scope.launch {
             val saved = withContext(Dispatchers.IO) {
                 val downloadDirectory =

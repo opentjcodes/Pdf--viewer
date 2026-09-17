@@ -145,6 +145,12 @@ class SettingsFragment : PreferenceFragmentCompat() {
         super.onSaveInstanceState(outState)
     }
 
+    override fun onResume() {
+        super.onResume()
+        (childFragmentManager.findFragmentByTag(AUTO_BACKUP_TIME_PICKER_TAG) as? MaterialTimePicker)
+            ?.let(::bindAutoBackupTimePicker)
+    }
+
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         appPreferences = Preferences(requireNotNull(preferenceManager.sharedPreferences))
         preferenceFactory = SettingsPreferenceFactory(this, appPreferences)
@@ -302,6 +308,12 @@ class SettingsFragment : PreferenceFragmentCompat() {
             .setMinute(appPreferences.getAutoBackupMinute())
             .setTitleText(R.string.auto_backup_time_title)
             .build()
+        bindAutoBackupTimePicker(picker)
+        picker.show(childFragmentManager, AUTO_BACKUP_TIME_PICKER_TAG)
+    }
+
+    private fun bindAutoBackupTimePicker(picker: MaterialTimePicker) {
+        picker.clearOnPositiveButtonClickListeners()
         picker.addOnPositiveButtonClickListener {
             appPreferences.setAutoBackupTime(picker.hour, picker.minute)
             if (appPreferences.getAutoBackupEnabled()) {
@@ -309,7 +321,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
             }
             rebuildPreferences()
         }
-        picker.show(childFragmentManager, "autoBackupTimePicker")
     }
 
     fun startBackupImport() {
@@ -657,6 +668,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     companion object {
+        private const val AUTO_BACKUP_TIME_PICKER_TAG = "autoBackupTimePicker"
         private const val ARG_PAGE = "settingsPage"
         private const val ARG_SEARCH_QUERY = "settingsSearchQuery"
         private const val STATE_EXPORT_SETTINGS = "settingsExportIncludeSettings"

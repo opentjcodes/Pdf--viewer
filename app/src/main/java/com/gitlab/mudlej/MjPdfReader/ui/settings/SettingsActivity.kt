@@ -75,9 +75,10 @@ class SettingsActivity : AppCompatActivity(), SettingsFragment.Navigation {
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         val item = menu.findItem(R.id.searchSettingsOption)
         item.isVisible = currentPage == null
-        if (currentPage == null && searchQuery.isNotBlank()) {
+        val queryToRestore = searchQuery
+        if (currentPage == null && queryToRestore.isNotBlank()) {
             item.expandActionView()
-            (item.actionView as? SearchView)?.setQuery(searchQuery, false)
+            (item.actionView as? SearchView)?.setQuery(queryToRestore, false)
         }
         return super.onPrepareOptionsMenu(menu)
     }
@@ -119,9 +120,10 @@ class SettingsActivity : AppCompatActivity(), SettingsFragment.Navigation {
                 return true
             }
         })
-        if (searchQuery.isNotBlank()) {
+        val queryToRestore = searchQuery
+        if (queryToRestore.isNotBlank()) {
             item.expandActionView()
-            view.setQuery(searchQuery, false)
+            view.setQuery(queryToRestore, false)
         }
     }
 

@@ -53,6 +53,8 @@ class AnnotationController(
 
     fun clearDirty() {
         vm.hasUnsavedAnnotations = false
+        vm.hasRecoverableUnsavedAnnotations = false
+        vm.hasUnrecoverableUnsavedAnnotations = false
     }
 
     fun setSaving(saving: Boolean) {
@@ -64,6 +66,9 @@ class AnnotationController(
         applyContentTag(edit)
         if (historyPolicy.canRecord()) {
             journal.append(uri, edit)
+            vm.hasRecoverableUnsavedAnnotations = true
+        } else {
+            vm.hasUnrecoverableUnsavedAnnotations = true
         }
         vm.sessionOwnedAnnotationKeys.add(SourceKey.of(uri))
         vm.hasUnsavedAnnotations = true
@@ -107,6 +112,15 @@ class AnnotationController(
             pageContentTags.clear()
         }
         vm.hasUnsavedAnnotations = false
+        vm.hasRecoverableUnsavedAnnotations = false
+        vm.hasUnrecoverableUnsavedAnnotations = false
+    }
+
+    fun discardUnrecoverableDirtyState() {
+        vm.hasUnrecoverableUnsavedAnnotations = false
+        if (!vm.hasRecoverableUnsavedAnnotations) {
+            vm.hasUnsavedAnnotations = false
+        }
     }
 
     suspend fun replayJournal(): Boolean {
@@ -125,6 +139,7 @@ class AnnotationController(
         }
         markSessionOwned(uri)
         vm.hasUnsavedAnnotations = true
+        vm.hasRecoverableUnsavedAnnotations = true
         return true
     }
 

@@ -9,7 +9,6 @@
     android:layout_height="match_parent"
     android:background="?attr/colorSurfaceContainerHigh"
     android:clipChildren="false"
-    android:layoutDirection="ltr"
     tools:context="com.gitlab.mudlej.MjPdfReader.ui.reader.MainActivity">
 
     <!-- Second Bar Layout -->

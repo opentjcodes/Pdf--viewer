@@ -41,6 +41,8 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
     var annotationSaveDestinationUri: Uri? = null
     var annotationSaveDestinationDurable = false
     var hasUnsavedAnnotations = false
+    var hasRecoverableUnsavedAnnotations = false
+    var hasUnrecoverableUnsavedAnnotations = false
     var isSavingAnnotations = false
     val sessionOwnedAnnotationKeys = mutableSetOf<String>()
     var onSaveComplete: ((SaveOutcome) -> Unit)? = null
@@ -126,6 +128,8 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
         annotationSaveDestinationUri = null
         annotationSaveDestinationDurable = false
         hasUnsavedAnnotations = false
+        hasRecoverableUnsavedAnnotations = false
+        hasUnrecoverableUnsavedAnnotations = false
         isSavingAnnotations = false
     }
 
@@ -157,8 +161,10 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
             out.putInt(PDF.viewStatePagesPerRowKey, viewState.pagesPerRow)
             out.putBoolean(PDF.viewStateFirstPageAloneKey, viewState.firstPageAlone)
         }
-        out.putBoolean(PDF.hasUnsavedAnnotationsKey, hasUnsavedAnnotations)
-        out.putStringArrayList(PDF.sessionOwnedAnnotationKeysKey, ArrayList(sessionOwnedAnnotationKeys))
+        if (hasRecoverableUnsavedAnnotations) {
+            out.putBoolean(PDF.hasUnsavedAnnotationsKey, hasUnsavedAnnotations)
+            out.putStringArrayList(PDF.sessionOwnedAnnotationKeysKey, ArrayList(sessionOwnedAnnotationKeys))
+        }
         out.putParcelable(KEY_LOADED_ANNOTATION_URI, loadedAnnotationDocumentUri)
         val signatureRect = pendingSignatureRect
         if (signatureRect != null && pendingSignaturePage >= 0) {
@@ -216,6 +222,7 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
         saved.getStringArrayList(PDF.sessionOwnedAnnotationKeysKey)?.let(sessionOwnedAnnotationKeys::addAll)
         if (saved.getBoolean(PDF.hasUnsavedAnnotationsKey, false)) {
             hasUnsavedAnnotations = true
+            hasRecoverableUnsavedAnnotations = true
             doc.uri?.let { sessionOwnedAnnotationKeys.add(SourceKey.of(it)) }
         }
         if (saved.getBoolean(KEY_SIGNATURE_PENDING, false)) {

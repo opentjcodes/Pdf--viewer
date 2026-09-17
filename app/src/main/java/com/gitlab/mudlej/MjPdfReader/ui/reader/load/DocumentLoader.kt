@@ -115,7 +115,10 @@ class DocumentLoader(
         doc.resetLength()
 
         val scheme = uri.scheme
-        if (scheme != null && (scheme.contains("http") || scheme.contains("org.nextcloud.documents"))) {
+        val isOnline = scheme.equals("http", ignoreCase = true) ||
+            scheme.equals("https", ignoreCase = true) ||
+            scheme?.contains("org.nextcloud.documents") == true
+        if (isOnline) {
             openOnlineDocument(uri)
         }
         else {

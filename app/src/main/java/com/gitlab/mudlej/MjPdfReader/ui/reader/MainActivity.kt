@@ -187,8 +187,11 @@ class MainActivity : AppCompatActivity(), ReaderUi {
     }
 
     private fun openInitialDocument(savedInstanceState: Bundle?) {
+        var pendingCleartextUri: Uri? = null
         if (savedInstanceState != null) {
             restoreInstanceState(savedInstanceState)
+            pendingCleartextUri = externalIntentUri()
+                ?.takeIf { it.isCleartextHttp() && !isDisplayingUri(it.toString()) }
         }
         else {
             val intentUri = intent.data
@@ -205,15 +208,29 @@ class MainActivity : AppCompatActivity(), ReaderUi {
                     reader.pickFile()
                 }
             } else {
-                documentLoader.prepareNewDocument(intentUri)
+                openExternalUri(intentUri)
+                return
             }
         }
 
         displayFromUri(pdf.uri, true)
+        pendingCleartextUri?.let(::openExternalUri)
     }
 
     private fun openSharedTextLink(): Boolean {
-        val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return false
+        val link = sharedTextLink() ?: return false
+        openExternalUri(link)
+        return true
+    }
+
+    private fun externalIntentUri(): Uri? = if (intent.action == Intent.ACTION_SEND) {
+        sharedTextLink()
+    } else {
+        intent.data
+    }
+
+    private fun sharedTextLink(): Uri? {
+        val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return null
         val trimChars = charArrayOf(
             '<', '>', '(', ')', '[', ']', '{', '}', '"', '\'', '.', ',', ';', ':', '!', '?',
         )
@@ -224,9 +241,8 @@ class MainActivity : AppCompatActivity(), ReaderUi {
                 (token.startsWith("http://", ignoreCase = true)
                         || token.startsWith("https://", ignoreCase = true))
                         && Patterns.WEB_URL.matcher(token).matches()
-            } ?: return false
-        displayFromUri(Uri.parse(link), true)
-        return true
+            } ?: return null
+        return Uri.parse(link)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -239,7 +255,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
             }
         } else if (newUri != null) {
             if (!isDisplayingUri(newUri.toString())) {
-                runAfterDirtyAnnotationPrompt(PostSaveAction.DISPLAY_URI, newUri)
+                openExternalUri(newUri)
             }
         } else if (intent.getBooleanExtra(HomeActivity.EXTRA_OPEN_ONLINE_DIALOG, false)) {
             intent.removeExtra(HomeActivity.EXTRA_OPEN_ONLINE_DIALOG)
@@ -250,6 +266,29 @@ class MainActivity : AppCompatActivity(), ReaderUi {
     fun isDisplayingUri(uri: String): Boolean {
         return pdf.uri?.toString() == uri
     }
+
+    private fun openExternalUri(uri: Uri) {
+        if (uri.isCleartextHttp()) {
+            onlinePdfController.showOpenOnlinePdfDialog(
+                initialUri = uri,
+                onCancel = { clearPendingExternalUri(uri) },
+                onConfirmed = { clearPendingExternalUri(uri) },
+            )
+        } else {
+            runAfterDirtyAnnotationPrompt(PostSaveAction.DISPLAY_URI, uri)
+        }
+    }
+
+    private fun clearPendingExternalUri(uri: Uri) {
+        if (externalIntentUri() != uri) return
+        if (intent.action == Intent.ACTION_SEND) {
+            intent.removeExtra(Intent.EXTRA_TEXT)
+        } else {
+            intent.data = null
+        }
+    }
+
+    private fun Uri.isCleartextHttp(): Boolean = scheme.equals("http", ignoreCase = true)
 
     private fun setCustomActionBar() {
         val actionBar = supportActionBar
