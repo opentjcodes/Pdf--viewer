@@ -47,7 +47,11 @@ class SettingsActivity : AppCompatActivity(), SettingsFragment.Navigation {
             }
         })
 
-        currentPage?.let { showPage(it, animate = false) } ?: showRoot(animate = false)
+        if (savedInstanceState == null) {
+            currentPage?.let { showPage(it, animate = false) } ?: showRoot(animate = false)
+        } else {
+            title = currentPage?.let { getString(it.titleRes) } ?: getString(R.string.settings)
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
