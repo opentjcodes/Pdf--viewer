@@ -75,7 +75,11 @@ android {
         viewBinding = true
     }
     sourceSets {
-        androidTest.assets.srcDirs = ["$projectDir/schemas", "$rootDir/testing/goldens"]
+        androidTest.assets.srcDirs = [
+            "$projectDir/src/androidTest/assets",
+            "$projectDir/schemas",
+            "$rootDir/testing/goldens",
+        ]
     }
     androidResources {
         ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:<dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~:!README.md:!reviews:!tools"
