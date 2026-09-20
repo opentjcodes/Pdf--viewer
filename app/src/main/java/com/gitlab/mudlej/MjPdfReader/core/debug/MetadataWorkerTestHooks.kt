@@ -15,6 +15,8 @@ object MetadataWorkerTestHooks {
     private val dispatchPaused = AtomicBoolean(false)
     private val killOnce: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val killAlways: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    private val hangOnce: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    private val hangAlways: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val pauseAfterCommitted = AtomicInteger(-1)
     private val injectedMemory = AtomicReference<MetadataMemorySample?>(null)
 
@@ -35,12 +37,22 @@ object MetadataWorkerTestHooks {
         killAlways.clear()
     }
 
+    fun hangOnce(fingerprint: SourceFingerprint) {
+        if (BuildConfig.DEBUG) hangOnce.add(key(fingerprint))
+    }
+
+    fun hangAlways(fingerprint: SourceFingerprint) {
+        if (BuildConfig.DEBUG) hangAlways.add(key(fingerprint))
+    }
+
     fun debugBehavior(fingerprint: SourceFingerprint): Int {
         if (!BuildConfig.DEBUG) return MetadataProtocol.DEBUG_NONE
         val key = key(fingerprint)
-        return if (key in killAlways || killOnce.remove(key)) {
-            MetadataProtocol.DEBUG_KILL
-        } else MetadataProtocol.DEBUG_NONE
+        return when {
+            key in killAlways || killOnce.remove(key) -> MetadataProtocol.DEBUG_KILL
+            key in hangAlways || hangOnce.remove(key) -> MetadataProtocol.DEBUG_HANG
+            else -> MetadataProtocol.DEBUG_NONE
+        }
     }
 
     fun pauseAfterCommittedResults(count: Int) {
@@ -67,6 +79,8 @@ object MetadataWorkerTestHooks {
         dispatchPaused.set(false)
         pauseAfterCommitted.set(-1)
         clearKills()
+        hangOnce.clear()
+        hangAlways.clear()
         injectedMemory.set(null)
     }
 

@@ -12,4 +12,5 @@ object MetadataProtocol {
 
     const val DEBUG_NONE = 0
     const val DEBUG_KILL = 1
+    const val DEBUG_HANG = 2
 }

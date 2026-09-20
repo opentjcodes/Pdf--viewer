@@ -9,21 +9,26 @@ import android.os.Debug
 import android.os.IBinder
 import android.os.Process
 import android.os.SystemClock
+import android.util.Log
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.data.entity.SourceFingerprint
 import com.shockwave.pdfium.PdfiumCore
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.ScheduledThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 class PdfMetadataService : Service() {
-    private enum class State { IDLE, PROCESSING, WAITING_FOR_ACK, EXITING }
-
     private val executor = Executors.newSingleThreadExecutor()
-    private val state = AtomicReference(State.IDLE)
+    private val watchdog = ScheduledThreadPoolExecutor(1).apply {
+        removeOnCancelPolicy = true
+    }
+    private val state = MetadataWorkerState()
     private val workerInstance = SystemClock.elapsedRealtimeNanos()
     private lateinit var extractor: PdfMetadataExtractor
     private var callback: IPdfMetadataCallback? = null
     private var baselineNativePssBytes = 0L
-    private var waitingFingerprint: SourceFingerprint? = null
 
     private data class Request(
         val generation: Long,
@@ -46,7 +51,8 @@ class PdfMetadataService : Service() {
     }
 
     override fun onDestroy() {
-        state.set(State.EXITING)
+        state.exit()
+        watchdog.shutdownNow()
         executor.shutdownNow()
         super.onDestroy()
     }
@@ -65,9 +71,9 @@ class PdfMetadataService : Service() {
         }
 
         override fun sampleMemory(generation: Long, connectionToken: Long) {
-            if (state.get() != State.IDLE) return
+            if (!state.isIdle()) return
             executor.execute {
-                if (state.get() != State.IDLE) return@execute
+                if (!state.isIdle()) return@execute
                 runCatching {
                     deliverMemorySample(generation, connectionToken, ready = false)
                 }.onFailure { exitWorker() }
@@ -82,14 +88,20 @@ class PdfMetadataService : Service() {
             lastModified: Long,
             debugBehavior: Int,
         ) {
-            check(state.compareAndSet(State.IDLE, State.PROCESSING)) {
-                "Metadata worker received concurrent work"
-            }
-            executor.execute {
-                processDocument(
-                    Request(generation, connectionToken, SourceFingerprint(path, size, lastModified), debugBehavior)
-                )
-            }
+            val request = Request(generation, connectionToken, SourceFingerprint(path, size, lastModified), debugBehavior)
+            val attempt = state.begin(request.fingerprint)
+            runCatching {
+                val deadline = watchdog.schedule({
+                    if (state.expire(attempt)) {
+                        try {
+                            Log.w("PdfMetadataService", "Metadata watchdog expired after ${EXTRACTION_TIMEOUT_MS}ms; generation=$generation token=$connectionToken")
+                        } finally {
+                            Process.killProcess(Process.myPid())
+                        }
+                    }
+                }, EXTRACTION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                executor.execute { processDocument(request, attempt, deadline) }
+            }.onFailure { exitWorker() }
         }
 
         override fun acknowledge(
@@ -100,9 +112,8 @@ class PdfMetadataService : Service() {
             lastModified: Long,
             action: Int,
         ) {
-            check(state.get() == State.WAITING_FOR_ACK)
-            check(waitingFingerprint == SourceFingerprint(path, size, lastModified))
-            waitingFingerprint = null
+            val continueWork = action == MetadataProtocol.ACK_CONTINUE
+            if (!state.acknowledge(SourceFingerprint(path, size, lastModified), continueWork)) return
             val acknowledged = runCatching {
                 callback?.onAcknowledged(generation, connectionToken)
             }.isSuccess
@@ -110,23 +121,34 @@ class PdfMetadataService : Service() {
                 exitWorker()
                 return
             }
-            if (action == MetadataProtocol.ACK_CONTINUE) {
-                state.set(State.IDLE)
-            } else {
+            if (!continueWork) {
                 exitWorker()
             }
         }
     }
 
-    private fun processDocument(request: Request) {
-        if (request.debugBehavior == MetadataProtocol.DEBUG_KILL) {
+    private fun processDocument(
+        request: Request,
+        attempt: MetadataWorkerState.Attempt,
+        deadline: ScheduledFuture<*>,
+    ) {
+        if (BuildConfig.DEBUG && request.debugBehavior == MetadataProtocol.DEBUG_KILL) {
             Process.killProcess(Process.myPid())
             return
         }
+        if (BuildConfig.DEBUG && request.debugBehavior == MetadataProtocol.DEBUG_HANG) {
+            val neverReleased = CountDownLatch(1)
+            while (true) {
+                try {
+                    neverReleased.await()
+                } catch (_: InterruptedException) {
+                }
+            }
+        }
         val result = extractor.extract(request.fingerprint)
         val memory = memorySample()
-        waitingFingerprint = request.fingerprint
-        state.set(State.WAITING_FOR_ACK)
+        if (!state.complete(attempt)) return
+        deadline.cancel(false)
         deliverResult(request, result, memory)
     }
 
@@ -196,8 +218,11 @@ class PdfMetadataService : Service() {
     }
 
     private fun exitWorker() {
-        if (state.getAndSet(State.EXITING) == State.EXITING) return
-        stopSelf()
+        state.exit()
         Process.killProcess(Process.myPid())
+    }
+
+    private companion object {
+        const val EXTRACTION_TIMEOUT_MS = 5_000L
     }
 }
