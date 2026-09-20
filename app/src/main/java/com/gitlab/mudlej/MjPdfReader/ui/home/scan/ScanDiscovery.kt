@@ -145,10 +145,12 @@ class ScanDiscovery(
     ) =
         discover(generation, DiscoverySource.FILESYSTEM) { batch ->
             val probe = ScanPathProbe(context)
+            var failure: Exception? = null
             for (walk in walks) {
                 currentCoroutineContext().ensureActive()
                 for (file in StorageManager().readAllFiles(
                     walk.roots.map(::File), walk.excludedRoots.map(::File), walk.explicitRoots,
+                    onError = { if (failure == null) failure = it },
                 )) {
                     currentCoroutineContext().ensureActive()
                     if (!file.extension.equals(PDF_SUFFIX, ignoreCase = true)) continue
@@ -156,6 +158,7 @@ class ScanDiscovery(
                     if (state is ScanPathState.Present) batch.add(state.entry)
                 }
             }
+            failure?.let { throw it }
         }
 
     private suspend fun discover(

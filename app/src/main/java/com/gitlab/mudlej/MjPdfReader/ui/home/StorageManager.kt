@@ -19,6 +19,7 @@ class StorageManager {
         roots: List<File>,
         excludedRoots: List<File> = emptyList(),
         explicitRoots: Boolean = false,
+        onError: (Exception) -> Unit = { throw it },
     ): Sequence<File> = sequence {
         val pending = ArrayDeque<File>()
         val excluded = excludedRoots.map { it.absoluteFile.normalize().path }
@@ -29,10 +30,18 @@ class StorageManager {
             val path = file.absoluteFile.normalize().path
             if (ScanScope.contains(excluded, path)) continue
             yield(file)
-            if (!mayEnter(file)) continue
-            if (path !in selected && File(file, ".nomedia").exists()) continue
-            ScanDebugSignals.noteFilesystemDirectory()
-            val children = file.listFiles() ?: throw IOException("Cannot list scan directory: $path")
+            val children = try {
+                if (!mayEnter(file)) continue
+                if (path !in selected && File(file, ".nomedia").exists()) continue
+                ScanDebugSignals.noteFilesystemDirectory()
+                file.listFiles() ?: throw IOException("Cannot list scan directory: $path")
+            } catch (error: IOException) {
+                onError(error)
+                continue
+            } catch (error: SecurityException) {
+                onError(error)
+                continue
+            }
             for (index in children.indices.reversed()) pending.addLast(children[index])
         }
     }

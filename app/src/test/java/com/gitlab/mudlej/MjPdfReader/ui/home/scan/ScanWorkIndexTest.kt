@@ -233,11 +233,13 @@ class ScanWorkIndexTest {
         work.sourceFinished(ScanEvent.DiscoverySourceFinished(0, DiscoverySource.FILESYSTEM))
         assertEquals(listOf(first), work.reconciliationCandidates(emptyList(), emptyList()))
 
-        work.resetScope(listOf("/books"))
-        work.sourceFailed(ScanEvent.DiscoverySourceFailed(0, DiscoverySource.MEDIA_STORE, Exception()))
-        work.sourceFinished(ScanEvent.DiscoverySourceFinished(0, DiscoverySource.MEDIA_STORE))
-        work.sourceFinished(ScanEvent.DiscoverySourceFinished(0, DiscoverySource.FILESYSTEM))
-        assertTrue(work.reconciliationCandidates(listOf("/books"), emptyList()).isEmpty())
+        for (source in DiscoverySource.entries) {
+            work.resetScope(listOf("/books"))
+            work.sourceFailed(ScanEvent.DiscoverySourceFailed(0, source, Exception()))
+            work.sourceFinished(ScanEvent.DiscoverySourceFinished(0, DiscoverySource.MEDIA_STORE))
+            work.sourceFinished(ScanEvent.DiscoverySourceFinished(0, DiscoverySource.FILESYSTEM))
+            assertTrue(work.reconciliationCandidates(listOf("/books"), emptyList()).isEmpty())
+        }
     }
 
     @Test fun terminalSnapshotRetainsCacheWhileScopeRetirementClearsQueueAndReservation() {
