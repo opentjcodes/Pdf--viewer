@@ -6,6 +6,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.gitlab.mudlej.MjPdfReader.data.AppDatabase
 import com.gitlab.mudlej.MjPdfReader.data.AppDatabaseMigrations
 import com.gitlab.mudlej.MjPdfReader.suite.core.TestId
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -90,6 +91,31 @@ class ScanDatabaseMigrationTest {
             val completed = room.scannedPdfEntryDao().findAll().single { it.path == "/zero.pdf" }
             assertEquals("COMPLETE", completed.metadataState.name)
             assertEquals(20, completed.pageCount)
+        } finally {
+            room.close()
+        }
+    }
+
+    @Test
+    @TestId("SCAN-53")
+    fun exportedVersion15OpensWithTheCurrentRoomImplementation() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val schema = instrumentation.context.assets.open("${AppDatabase::class.java.name}/15.json")
+            .bufferedReader().use { JSONObject(it.readText()).getJSONObject("database") }
+        helper.createDatabase(NAME, 15).use { database ->
+            val setup = schema.getJSONArray("setupQueries")
+            for (index in 0 until setup.length()) database.execSQL(setup.getString(index))
+            database.query("SELECT identity_hash FROM room_master_table WHERE id = 42").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(schema.getString("identityHash"), cursor.getString(0))
+            }
+        }
+        val context = instrumentation.targetContext
+        val room = Room.databaseBuilder(context, AppDatabase::class.java, NAME)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            assertTrue(room.scannedPdfEntryDao().findAll().isEmpty())
         } finally {
             room.close()
         }

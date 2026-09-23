@@ -17,6 +17,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.gitlab.mudlej.MjPdfReader.R
 import com.gitlab.mudlej.MjPdfReader.core.debug.DebugRootDescription
 import com.gitlab.mudlej.MjPdfReader.core.io.appDateTimeFormatter
+import com.gitlab.mudlej.MjPdfReader.core.io.appendExportSection
 import com.gitlab.mudlej.MjPdfReader.core.io.convertDateString
 import com.gitlab.mudlej.MjPdfReader.core.ui.AppSnackbar
 import com.gitlab.mudlej.MjPdfReader.core.ui.attachFilterSearchView
@@ -321,10 +322,10 @@ class UserHighlightsActivity : AppCompatActivity() {
             infoParts.add(colorLabel(item.color))
             builder.appendLine(infoParts.joinToString(" | "))
             if (item.quotedText.isNotBlank()) {
-                builder.appendLine("${getString(R.string.export_quote_label)}: “${item.quotedText.trim()}”")
+                builder.appendExportSection(getString(R.string.export_quote_label), item.quotedText.trim())
             }
             if (item.note.isNotBlank()) {
-                builder.appendLine("${getString(R.string.note)}: ${item.note}")
+                builder.appendExportSection(getString(R.string.note), item.note)
             }
         }
         return builder.toString()
