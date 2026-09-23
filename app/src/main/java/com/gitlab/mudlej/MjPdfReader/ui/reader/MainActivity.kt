@@ -57,6 +57,7 @@ import com.gitlab.mudlej.MjPdfReader.pdf.PDF
 import com.gitlab.mudlej.MjPdfReader.pdf.PdfPropertiesSummary
 import com.gitlab.mudlej.MjPdfReader.ui.reader.annotation.ReaderAnnotationDebug
 import com.gitlab.mudlej.MjPdfReader.ui.reader.load.DocumentUnreachableException
+import com.gitlab.mudlej.MjPdfReader.ui.reader.load.LoadState
 import com.gitlab.mudlej.MjPdfReader.ui.settings.SettingsActivity
 import com.gitlab.mudlej.MjPdfReader.ui.settings.SettingsPage
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -398,6 +399,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
 
     fun displayFromUri(uri: Uri?, savePassword: Boolean = false) {
         documentLoader.displayFromUri(uri, savePassword)
+        updatePickFileButtonVisibility()
         if (uri != null) {
             closeOtherReaderWindows()
         }
@@ -567,14 +569,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
         updateHomeUpIndicator()
         reader.onResume()
 
-        // check if there is a pdf at first
-
-        if (pdf.uri != null) {
-            binding.pickFileButton.visibility = View.GONE
-        }
-        else {
-            binding.pickFileButton.visibility = View.VISIBLE
-        }
+        updatePickFileButtonVisibility()
 
         // restore the full screen mode if was toggled On
         fullscreenController.restoreFullScreenIfNeeded()
@@ -585,6 +580,14 @@ class MainActivity : AppCompatActivity(), ReaderUi {
 
         if (BuildConfig.DEBUG) {
             stallWatchdog.start()
+        }
+    }
+
+    private fun updatePickFileButtonVisibility() {
+        binding.pickFileButton.visibility = if (pdf.uri == null || documentLoader.state is LoadState.Failed) {
+            View.VISIBLE
+        } else {
+            View.GONE
         }
     }
 
@@ -737,6 +740,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
             reader.startStaleDocumentRecovery(pdf.uri ?: return)
         }
         else {
+            updatePickFileButtonVisibility()
             AppSnackbar.make(binding.root, R.string.file_opening_error, Snackbar.LENGTH_LONG).show()
             Log.e(TAG, getString(R.string.file_opening_error), exception)
         }
