@@ -249,6 +249,7 @@ class SearchActivity : AppCompatActivity(), SearchResultFunctions {
         menuInflater.inflate(R.menu.search_menu, menu)
         menu.tintIconsForChrome(this)
         actionBarMenu = menu
+        configureSearchIcon(menu, searchResults.isNotEmpty())
         return true
     }
 
