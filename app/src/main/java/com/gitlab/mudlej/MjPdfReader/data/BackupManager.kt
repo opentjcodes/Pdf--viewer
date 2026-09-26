@@ -67,10 +67,29 @@ class BackupManager(
             tmpFile.delete()
             throw exception
         }
-        if (!tmpFile.renameTo(fileName)) {
+        val filesBeforeRename = folder.listFiles().map { it.uri }.toSet()
+        val temporaryUri = tmpFile.uri
+        if (!tmpFile.renameTo(fileName) &&
+            !hasVerifiedRenamedBackup(folder, filesBeforeRename, temporaryUri, json)
+        ) {
             finalizeWithoutRename(folder, fileName, data, json, tmpFile)
         }
         ExportSummary(settings?.size ?: 0, records?.size ?: 0, bookmarks?.size ?: 0)
+    }
+
+    private fun hasVerifiedRenamedBackup(
+        folder: DocumentFile,
+        filesBeforeRename: Set<Uri>,
+        temporaryUri: Uri,
+        json: String,
+    ): Boolean = folder.listFiles().any { file ->
+        file.isFile && file.name?.endsWith(".tmp") == false &&
+            (file.uri !in filesBeforeRename || file.uri == temporaryUri) &&
+            runCatching {
+                context.contentResolver.openInputStream(file.uri)?.use { input ->
+                    readBounded(input).toString(Charsets.UTF_8) == json
+                } == true
+            }.getOrDefault(false)
     }
 
     private fun finalizeWithoutRename(
