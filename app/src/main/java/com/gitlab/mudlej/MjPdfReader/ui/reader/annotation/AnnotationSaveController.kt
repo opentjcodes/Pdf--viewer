@@ -60,7 +60,7 @@ sealed interface SaveOutcome {
     data class Failure(
         val rescueFileName: String?,
         val unconfirmed: Boolean,
-        val overwritesSource: Boolean = false,
+        val sourceMayBeIncomplete: Boolean = false,
     ) : SaveOutcome
 }
 
@@ -84,7 +84,11 @@ class AnnotationSaveController(
 ) {
     private sealed interface WriteResult {
         data class Success(val hash: String, val identity: String, val sizeBytes: Long) : WriteResult
-        data class Failure(val rescueFileName: String?, val unconfirmed: Boolean) : WriteResult
+        data class Failure(
+            val rescueFileName: String?,
+            val unconfirmed: Boolean,
+            val destinationMayBeIncomplete: Boolean = false,
+        ) : WriteResult
     }
 
     fun saveHighlights(postSaveAction: PostSaveAction? = null, actionUri: Uri? = null) {
@@ -325,7 +329,7 @@ class AnnotationSaveController(
 
         backgroundSaveScope.launch {
             var outcome: SaveOutcome =
-                SaveOutcome.Failure(rescueFileName = null, unconfirmed = false, overwritesSource = overwritesSource)
+                SaveOutcome.Failure(rescueFileName = null, unconfirmed = false, sourceMayBeIncomplete = overwritesSource)
             try {
                 val writeResult = writeDocumentToSaf(destinationUri, fault)
                 if (writeResult is WriteResult.Success) {
@@ -376,7 +380,7 @@ class AnnotationSaveController(
                     outcome = SaveOutcome.Failure(
                         writeResult.rescueFileName,
                         writeResult.unconfirmed,
-                        overwritesSource,
+                        sourceMayBeIncomplete = overwritesSource && writeResult.destinationMayBeIncomplete,
                     )
                 }
             } catch (e: CancellationException) {
@@ -519,12 +523,12 @@ class AnnotationSaveController(
             wrote = attemptContentWrite(destinationUri, tmp, fault)
         }
         if (!wrote.getOrDefault(false)) {
-            return failure(tmp, unconfirmed = false)
+            return failure(tmp, unconfirmed = false, destinationMayBeIncomplete = true)
         }
         return if (destinationMatches(destinationUri, hash, tailHash, sizeBytes, fault)) {
             WriteResult.Success(hash, identity, sizeBytes)
         } else {
-            failure(tmp, unconfirmed = true)
+            failure(tmp, unconfirmed = true, destinationMayBeIncomplete = true)
         }
     }
 
@@ -563,9 +567,13 @@ class AnnotationSaveController(
         return size < 0 || size == expected
     }
 
-    private fun failure(tmp: File, unconfirmed: Boolean): WriteResult.Failure {
+    private fun failure(
+        tmp: File,
+        unconfirmed: Boolean,
+        destinationMayBeIncomplete: Boolean = false,
+    ): WriteResult.Failure {
         val rescueFileName = if (!vm.incognito) writeRescueCopy(tmp) else null
-        return WriteResult.Failure(rescueFileName = rescueFileName, unconfirmed = unconfirmed)
+        return WriteResult.Failure(rescueFileName, unconfirmed, destinationMayBeIncomplete)
     }
 
     private fun writeRescueCopy(tmp: File): String? = runCatching {
@@ -589,7 +597,7 @@ class AnnotationSaveController(
         val titleRes: Int
         val message: CharSequence
         when {
-            outcome.overwritesSource -> {
+            outcome.sourceMayBeIncomplete -> {
                 titleRes = R.string.annotation_save_incomplete_title
                 message = if (outcome.rescueFileName != null) {
                     activity.getString(R.string.annotation_save_incomplete_rescue_message, outcome.rescueFileName)
