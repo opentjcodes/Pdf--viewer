@@ -22,6 +22,8 @@ object DurableCopyStore {
 
     class SavedCopy(val uri: Uri, val isPublic: Boolean)
 
+    private val directoryPublishLock = Any()
+
     fun saveCopy(context: Context, source: Uri, displayName: String, expectedHash: String?): SavedCopy? {
         val fileName = ensurePdfFileName(displayName)
         val publicCopy = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -75,24 +77,31 @@ object DurableCopyStore {
             if (!directory.isDirectory && !directory.mkdirs()) {
                 return@runCatching null
             }
-            val target = resolveTarget(directory, fileName, expectedHash) ?: return@runCatching null
-            if (target.exists()) {
-                return@runCatching SavedCopy(Uri.fromFile(target), isPublic)
+            val target = synchronized(directoryPublishLock) {
+                val candidate = resolveTarget(directory, fileName, expectedHash) ?: return@runCatching null
+                if (candidate.exists()) {
+                    return@runCatching SavedCopy(Uri.fromFile(candidate), isPublic)
+                }
+                candidate
             }
             val partial = File(directory, "${target.name}.${UUID.randomUUID()}$PARTIAL_SUFFIX")
-            try {
+            val published = try {
                 partial.outputStream().use { output -> copySource(context, source, output) }
-                if (!partial.renameTo(target)) {
-                    throw IOException("Rename failed for $target")
+                synchronized(directoryPublishLock) {
+                    val candidate = resolveTarget(directory, fileName, expectedHash)
+                        ?: throw IOException("No available name for $fileName")
+                    if (!candidate.exists() && !partial.renameTo(candidate)) {
+                        throw IOException("Rename failed for $candidate")
+                    }
+                    candidate
                 }
-            } catch (throwable: Throwable) {
+            } finally {
                 partial.delete()
-                throw throwable
             }
             if (isPublic) {
-                notifyMediaScanner(context, target)
+                notifyMediaScanner(context, published)
             }
-            SavedCopy(Uri.fromFile(target), isPublic)
+            SavedCopy(Uri.fromFile(published), isPublic)
         }.getOrNull()
     }
 
