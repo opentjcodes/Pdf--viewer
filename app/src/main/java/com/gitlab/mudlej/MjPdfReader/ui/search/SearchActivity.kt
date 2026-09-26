@@ -4,9 +4,6 @@ package com.gitlab.mudlej.MjPdfReader.ui.search
 
 import android.content.Intent
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -14,6 +11,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SearchView
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import androidx.preference.PreferenceManager
 import com.gitlab.mudlej.MjPdfReader.R
 import com.gitlab.mudlej.MjPdfReader.pdf.PDF
@@ -50,6 +48,7 @@ class SearchActivity : AppCompatActivity(), SearchResultFunctions {
     private var searchQuery: String = ""
     private var restoredListPosition: Int = -1
     private var restoredListOffsetPx: Int = 0
+    private var restoreListPositionPending = true
     private var restoredNestedQuery: String? = null
     private var restoredNestedQueryApplied = false
     private var nestedQueryJob: Job? = null
@@ -115,26 +114,32 @@ class SearchActivity : AppCompatActivity(), SearchResultFunctions {
         binding.searchRecyclerView.apply {
             adapter = searchResultAdapter
             layoutManager = LinearLayoutManager(this@SearchActivity)
+            addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                    if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
+                        restoreListPositionPending = false
+                    }
+                }
+            })
         }
     }
 
     private fun restorePositionInList() {
+        if (!restoreListPositionPending) return
         val position = if (restoredListPosition != -1) {
             restoredListPosition
         } else {
             intent.getIntExtra(PDF.resultPositionInListKey, -1)
         }
-        if (position == -1) return
+        if (position == -1) {
+            restoreListPositionPending = false
+            return
+        }
 
         if (position in 0 until searchResultAdapter.itemCount) {
-            Log.d(SearchActivity::class.simpleName, "restorePositionInList: $position")
             val layoutManager = binding.searchRecyclerView.layoutManager as? LinearLayoutManager ?: return
+            restoreListPositionPending = false
             layoutManager.scrollToPositionWithOffset(position, restoredListOffsetPx)
-        } else {
-            Log.e(
-                SearchActivity::class.simpleName,
-                "restorePositionInList error: attempted to scroll to invalid position $position in RecyclerView"
-            )
         }
     }
 
@@ -153,7 +158,7 @@ class SearchActivity : AppCompatActivity(), SearchResultFunctions {
             binding.searchProgressBar.visibility = View.GONE
             searchResults = cachedSearchResults(cachedSession.hits)
             searchResultAdapter.nestedQuery = restoredNestedQuery
-            searchResultAdapter.submitList(visibleResultRows())
+            searchResultAdapter.submitList(visibleResultRows()) { restorePositionInList() }
             postSearch()
             if (!restoredNestedQuery.isNullOrBlank()) {
                 invalidateOptionsMenu()
@@ -172,7 +177,7 @@ class SearchActivity : AppCompatActivity(), SearchResultFunctions {
 
             override fun onResults(results: List<SearchResult>, finished: Boolean) {
                 searchResults = results.toMutableList()
-                searchResultAdapter.submitList(visibleResultRows())
+                searchResultAdapter.submitList(visibleResultRows()) { restorePositionInList() }
                 title = "${"%,d".format(results.size)} ${getString(R.string.search_results)}"
                 if (finished) {
                     hideProgressBar()
@@ -238,9 +243,6 @@ class SearchActivity : AppCompatActivity(), SearchResultFunctions {
                 it.show()
             }
         }
-
-        // restore if not the first time
-        Handler(Looper.getMainLooper()).postDelayed({ restorePositionInList() }, 100)
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
