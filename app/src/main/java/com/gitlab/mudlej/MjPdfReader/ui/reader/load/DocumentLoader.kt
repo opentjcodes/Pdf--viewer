@@ -211,6 +211,7 @@ class DocumentLoader(
             doc.readingDirectionOverride = readingDirectionState.overrideDirection
             doc.detectedReadingDirection = readingDirectionState.detectedDirection
             doc.effectiveReadingDirection = readingDirectionState.effectiveDirection
+            doc.readingDirectionResolved = true
             withContext(Dispatchers.Main) {
                 if (vm.isCurrent(loadToken, documentUri)) {
                     configureAndLoad(

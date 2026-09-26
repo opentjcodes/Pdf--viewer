@@ -111,6 +111,7 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
         doc.pageRangeStart = 0
         doc.pageRangeEnd = 0
         doc.autoScrollSpeed = null
+        doc.readingDirectionResolved = false
         doc.readingDirectionOverride = null
         doc.detectedReadingDirection = null
         doc.effectiveReadingDirection = ReadingDirection.LEFT_TO_RIGHT
@@ -146,6 +147,7 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
         out.putBoolean(KEY_REVALIDATE_DOCUMENT, revalidateDocumentOnLoad)
         out.putInt(PDF.pageNumberKey, doc.pageNumber)
         out.putString(PDF.passwordKey, doc.password)
+        out.putBoolean(KEY_READING_DIRECTION_RESOLVED, doc.readingDirectionResolved)
         out.putString(PDF.readingDirectionOverrideKey, doc.readingDirectionOverride?.id)
         out.putString(PDF.detectedReadingDirectionKey, doc.detectedReadingDirection?.id)
         out.putString(PDF.effectiveReadingDirectionKey, doc.effectiveReadingDirection.id)
@@ -198,6 +200,7 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
         revalidateDocumentOnLoad = saved.getBoolean(KEY_REVALIDATE_DOCUMENT, false)
         doc.pageNumber = saved.getInt(PDF.pageNumberKey)
         doc.password = saved.getString(PDF.passwordKey)
+        doc.readingDirectionResolved = saved.getBoolean(KEY_READING_DIRECTION_RESOLVED, false)
         doc.readingDirectionOverride = ReadingDirection.fromOverrideId(
             saved.getString(PDF.readingDirectionOverrideKey),
         )
@@ -253,6 +256,7 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
     }
 
     private companion object {
+        const val KEY_READING_DIRECTION_RESOLVED = "readingDirectionResolved"
         const val KEY_REVALIDATE_DOCUMENT = "revalidateDocumentOnLoad"
         const val STATE_KEY = "readerViewModelState"
         const val KEY_LOADED_ANNOTATION_URI = "loadedAnnotationDocumentUri"
