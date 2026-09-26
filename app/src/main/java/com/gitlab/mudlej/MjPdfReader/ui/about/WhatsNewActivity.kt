@@ -36,6 +36,7 @@ class WhatsNewActivity : AppCompatActivity() {
         binding = ActivityWhatsNewBinding.inflate(layoutInflater)
         setContentView(binding.root)
         setupScreenChrome()
+        title = getString(R.string.whats_new_title)
 
         val release = requestedRelease()
         binding.versionChip.text = when (release) {
