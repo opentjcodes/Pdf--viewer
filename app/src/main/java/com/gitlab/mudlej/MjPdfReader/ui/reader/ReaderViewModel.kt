@@ -21,6 +21,7 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
     var currentLoadToken = 0L
         private set
     var pendingViewState: PDFView.ViewState? = null
+    var revalidateDocumentOnLoad = false
     var cropMarginsEnabled = false
 
     private var positionPersistSuppressed = false
@@ -102,6 +103,7 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
 
     fun beginNewDocument(uri: Uri, cropMarginsDefault: Boolean) {
         currentLoadToken++
+        revalidateDocumentOnLoad = false
         doc.uri = uri
         doc.fileHash = null
         doc.pageNumber = 0
@@ -141,6 +143,7 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
         val out = Bundle()
         out.putParcelable(PDF.uriKey, doc.uri)
         out.putString(PDF.fileHashKey, doc.fileHash)
+        out.putBoolean(KEY_REVALIDATE_DOCUMENT, revalidateDocumentOnLoad)
         out.putInt(PDF.pageNumberKey, doc.pageNumber)
         out.putString(PDF.passwordKey, doc.password)
         out.putString(PDF.readingDirectionOverrideKey, doc.readingDirectionOverride?.id)
@@ -192,6 +195,7 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
     private fun restoreState(saved: Bundle) {
         doc.uri = saved.getParcelable(PDF.uriKey)
         doc.fileHash = saved.getString(PDF.fileHashKey)
+        revalidateDocumentOnLoad = saved.getBoolean(KEY_REVALIDATE_DOCUMENT, false)
         doc.pageNumber = saved.getInt(PDF.pageNumberKey)
         doc.password = saved.getString(PDF.passwordKey)
         doc.readingDirectionOverride = ReadingDirection.fromOverrideId(
@@ -249,6 +253,7 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
     }
 
     private companion object {
+        const val KEY_REVALIDATE_DOCUMENT = "revalidateDocumentOnLoad"
         const val STATE_KEY = "readerViewModelState"
         const val KEY_LOADED_ANNOTATION_URI = "loadedAnnotationDocumentUri"
         const val KEY_SIGNATURE_PENDING = "signaturePlacementPending"

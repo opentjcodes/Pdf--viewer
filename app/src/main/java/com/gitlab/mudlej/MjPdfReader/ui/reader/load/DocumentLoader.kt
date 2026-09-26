@@ -138,16 +138,30 @@ class DocumentLoader(
     }
 
     fun initPdfViewAndLoad(viewConfigurator: Configurator, savePassword: Boolean = false) {
-        val loadToken = vm.currentLoadToken
+        var loadToken = vm.currentLoadToken
         val documentUri = doc.uri
-        val viewState = vm.pendingViewState
+        val previousHash = doc.fileHash
         state = LoadState.Loading
         scheduleLoadProgress(loadToken, documentUri)
         scope.launch {
-            val hash = doc.fileHash ?: resolveDocumentIdentity(doc.uri)
+            val hash = if (vm.revalidateDocumentOnLoad) {
+                resolveDocumentIdentity(documentUri) ?: previousHash
+            } else {
+                previousHash ?: resolveDocumentIdentity(documentUri)
+            }
             if (!vm.isCurrent(loadToken, documentUri)) {
                 return@launch
             }
+            vm.revalidateDocumentOnLoad = false
+            if (previousHash != null && hash != null && hash != previousHash && documentUri != null) {
+                emit { it.onDocumentReset() }
+                vm.beginNewDocument(documentUri, pref.getAlwaysHideMargins())
+                doc.password = null
+                loadToken = vm.currentLoadToken
+                ui.updateDirtyUi()
+                scheduleLoadProgress(loadToken, documentUri)
+            }
+            val viewState = vm.pendingViewState
             if (hash == null && doc.pageNumber == 0) {
                 if (!canLoadWithoutHash(loadToken, documentUri, savePassword)) {
                     return@launch

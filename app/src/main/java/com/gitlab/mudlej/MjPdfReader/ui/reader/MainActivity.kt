@@ -809,6 +809,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
 
     internal fun reloadPdf() {
         if (checkHasFile()) {
+            vm.revalidateDocumentOnLoad = true
             recreate()
         }
     }
