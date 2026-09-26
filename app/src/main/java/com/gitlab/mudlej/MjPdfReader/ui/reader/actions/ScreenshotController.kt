@@ -38,15 +38,9 @@ class ScreenshotController(
         val now = DateFormat.format("yyyy_MM_dd-hh_mm_ss", Date())
         try {
             val fileName = "${pdf.name.removeSuffix(".pdf")} - ${now}.jpg"
-            val imageFile = File(activity.getExternalFilesDir(Environment.DIRECTORY_PICTURES), fileName)
 
             beforeCapture()
             val bitmap = screenShot(binding.pdfView)
-
-            val outputStream = FileOutputStream(imageFile)
-            bitmap.compress(Bitmap.CompressFormat.JPEG, PDF.SCREENSHOT_IMAGE_QUALITY, outputStream)
-            outputStream.flush()
-            outputStream.close()
 
             val uri = saveImage(bitmap, fileName)
             AppSnackbar.make(binding.root, activity.getString(R.string.screenshot_saved), Snackbar.LENGTH_SHORT).also {
