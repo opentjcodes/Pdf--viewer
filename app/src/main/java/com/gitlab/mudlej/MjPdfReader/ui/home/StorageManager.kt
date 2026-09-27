@@ -18,12 +18,10 @@ class StorageManager {
     fun readAllFiles(
         roots: List<File>,
         excludedRoots: List<File> = emptyList(),
-        explicitRoots: Boolean = false,
         onError: (Exception) -> Unit = { throw it },
     ): Sequence<File> = sequence {
         val pending = ArrayDeque<File>()
         val excluded = excludedRoots.map { it.absoluteFile.normalize().path }
-        val selected = if (explicitRoots) roots.map { it.absoluteFile.normalize().path }.toSet() else emptySet()
         roots.asReversed().forEach(pending::addLast)
         while (pending.isNotEmpty()) {
             val file = pending.removeLast()
@@ -32,7 +30,6 @@ class StorageManager {
             yield(file)
             val children = try {
                 if (!mayEnter(file)) continue
-                if (path !in selected && File(file, ".nomedia").exists()) continue
                 ScanDebugSignals.noteFilesystemDirectory()
                 file.listFiles() ?: throw IOException("Cannot list scan directory: $path")
             } catch (error: IOException) {

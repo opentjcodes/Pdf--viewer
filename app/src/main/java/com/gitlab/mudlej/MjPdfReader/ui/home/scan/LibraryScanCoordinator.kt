@@ -217,8 +217,7 @@ class LibraryScanCoordinator(
         val configured = preferences.getScanMode() != ScanMode.NOT_CONFIGURED
         walks = if (configured) {
             val requested = requestedWalkRoots?.toList() ?: StorageManager().volumeRoots(context).map { it.path }
-            val explicitRoots = preferences.getScanMode() == ScanMode.SELECTED_LOCATIONS
-            (retainedWalks + ScanWalk(requested, excluded.toList(), explicitRoots)).filter { it.roots.isNotEmpty() }
+            (retainedWalks + ScanWalk(requested, excluded.toList())).filter { it.roots.isNotEmpty() }
         } else emptyList()
         val sources = if (walks.isEmpty()) setOf(DiscoverySource.MEDIA_STORE) else DiscoverySource.entries.toSet()
         work.resetScope(roots, sources)

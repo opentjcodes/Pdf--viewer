@@ -26,7 +26,6 @@ import kotlinx.coroutines.launch
 internal data class ScanWalk(
     val roots: List<String>,
     val excludedRoots: List<String> = emptyList(),
-    val explicitRoots: Boolean = false,
 ) {
     fun within(scopeRoots: List<String>?): ScanWalk {
         val retained = roots.flatMap { root ->
@@ -35,7 +34,6 @@ internal data class ScanWalk(
         }.filterNot { ScanScope.contains(excludedRoots, it) }
         return ScanWalk(
             ScanScope.normalize(retained.toSet()), excludedRoots.toList(),
-            explicitRoots = explicitRoots || scopeRoots != null,
         )
     }
 
@@ -52,10 +50,9 @@ class ScanDiscovery(
         roots: List<File> = emptyList(),
         excludedRoots: List<File> = emptyList(),
         knownEntries: List<ScannedPdfEntry> = emptyList(),
-        explicitRoots: Boolean = false,
     ) = run(
         generation,
-        listOf(ScanWalk(roots.map { it.path }, excludedRoots.map { it.path }, explicitRoots)),
+        listOf(ScanWalk(roots.map { it.path }, excludedRoots.map { it.path })),
         knownEntries,
     )
 
@@ -149,7 +146,7 @@ class ScanDiscovery(
             for (walk in walks) {
                 currentCoroutineContext().ensureActive()
                 for (file in StorageManager().readAllFiles(
-                    walk.roots.map(::File), walk.excludedRoots.map(::File), walk.explicitRoots,
+                    walk.roots.map(::File), walk.excludedRoots.map(::File),
                     onError = { if (failure == null) failure = it },
                 )) {
                     currentCoroutineContext().ensureActive()
