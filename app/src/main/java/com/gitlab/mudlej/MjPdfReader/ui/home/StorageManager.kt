@@ -18,10 +18,14 @@ class StorageManager {
     fun readAllFiles(
         roots: List<File>,
         excludedRoots: List<File> = emptyList(),
+        volumeRoots: List<File> = listOf(File(ROOT_DIR)),
         onError: (Exception) -> Unit = { throw it },
     ): Sequence<File> = sequence {
         val pending = ArrayDeque<File>()
         val excluded = excludedRoots.map { it.absoluteFile.normalize().path }
+        val systemDirectories = volumeRoots.flatMap { root ->
+            listOf(File(root, "Android"), File(root, "data"))
+        }.toSet()
         roots.asReversed().forEach(pending::addLast)
         while (pending.isNotEmpty()) {
             val file = pending.removeLast()
@@ -29,7 +33,7 @@ class StorageManager {
             if (ScanScope.contains(excluded, path)) continue
             yield(file)
             val children = try {
-                if (!mayEnter(file)) continue
+                if (file in systemDirectories || !mayEnter(file)) continue
                 ScanDebugSignals.noteFilesystemDirectory()
                 file.listFiles() ?: throw IOException("Cannot list scan directory: $path")
             } catch (error: IOException) {
@@ -45,9 +49,7 @@ class StorageManager {
 
     private fun mayEnter(file: File): Boolean =
         file.isDirectory &&
-            !file.isHidden &&
-            file != ANDROID_DIR &&
-            file != DATA_DIR
+            !file.isHidden
 
     fun volumeRoots(context: Context): List<File> {
         val roots = LinkedHashMap<String, File>()
@@ -78,8 +80,6 @@ class StorageManager {
     companion object {
 
         val ROOT_DIR = Environment.getExternalStorageDirectory().absolutePath
-        private val ANDROID_DIR = File("$ROOT_DIR/Android")
-        private val DATA_DIR = File("$ROOT_DIR/data")
 
         const val PDF_EXTENSION = "pdf"
     }

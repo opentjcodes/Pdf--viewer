@@ -142,11 +142,14 @@ class ScanDiscovery(
     ) =
         discover(generation, DiscoverySource.FILESYSTEM) { batch ->
             val probe = ScanPathProbe(context)
+            val storage = StorageManager()
+            val volumeRoots = storage.volumeRoots(context)
             var failure: Exception? = null
             for (walk in walks) {
                 currentCoroutineContext().ensureActive()
-                for (file in StorageManager().readAllFiles(
+                for (file in storage.readAllFiles(
                     walk.roots.map(::File), walk.excludedRoots.map(::File),
+                    volumeRoots = volumeRoots,
                     onError = { if (failure == null) failure = it },
                 )) {
                     currentCoroutineContext().ensureActive()
