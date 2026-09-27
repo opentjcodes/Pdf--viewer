@@ -537,11 +537,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
     }
 
     private fun canControlOrientation(): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInMultiWindowMode) {
-            return false
-        }
-        val largeScreen = resources.configuration.smallestScreenWidthDp >= LARGE_SCREEN_SW_DP
-        return !(largeScreen && Build.VERSION.SDK_INT >= ORIENTATION_REQUEST_IGNORED_SDK)
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !isInMultiWindowMode
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -1020,6 +1016,3 @@ class MainActivity : AppCompatActivity(), ReaderUi {
     }
 
 }
-
-private const val LARGE_SCREEN_SW_DP = 600
-private const val ORIENTATION_REQUEST_IGNORED_SDK = 36

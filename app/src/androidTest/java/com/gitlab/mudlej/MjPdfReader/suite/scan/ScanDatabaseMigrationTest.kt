@@ -1,5 +1,7 @@
 package com.gitlab.mudlej.MjPdfReader.suite.scan
 
+import com.gitlab.mudlej.MjPdfReader.suite.core.DurationCategory
+import com.gitlab.mudlej.MjPdfReader.suite.core.TestDuration
 import androidx.room.Room
 import androidx.room.testing.MigrationTestHelper
 import androidx.test.platform.app.InstrumentationRegistry
@@ -12,6 +14,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
+@TestDuration(DurationCategory.SHORT)
 class ScanDatabaseMigrationTest {
     @get:Rule
     val helper = MigrationTestHelper(

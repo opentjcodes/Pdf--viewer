@@ -84,9 +84,12 @@
             android:theme="@style/TextModeTheme" />
         <activity
             android:name=".ui.reader.MainActivity"
-            android:configChanges="keyboardHidden|orientation|screenSize"
+            android:configChanges="keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
             android:documentLaunchMode="intoExisting"
             android:exported="true">
+            <property
+                android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY"
+                android:value="true" />
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
