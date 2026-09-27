@@ -426,12 +426,14 @@ final class TextSelectionManager {
             dragOffsetX = 0f;
             dragOffsetY = 0f;
         }
+        int start = selection.startChar();
+        int end = selection.endChar();
         if (handle == Handle.START) {
-            selection.baseChar = selection.endChar();
-            selection.extentChar = selection.startChar();
+            selection.baseChar = end;
+            selection.extentChar = start;
         } else {
-            selection.baseChar = selection.startChar();
-            selection.extentChar = selection.endChar();
+            selection.baseChar = start;
+            selection.extentChar = end;
         }
         if (anchor != null) {
             showMagnifier(anchor.x, anchor.y);
