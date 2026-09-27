@@ -11,6 +11,8 @@ import android.provider.DocumentsContract
 import android.text.format.Formatter
 import android.widget.FrameLayout
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
 import androidx.preference.PreferenceCategory
@@ -642,6 +644,14 @@ class SettingsFragment : PreferenceFragmentCompat() {
             .setView(container)
             .setCancelable(false)
             .create()
+        val dialogLifecycle = viewLifecycleOwner.lifecycle
+        val destroyObserver = object : DefaultLifecycleObserver {
+            override fun onDestroy(owner: LifecycleOwner) {
+                dialog.dismiss()
+            }
+        }
+        dialogLifecycle.addObserver(destroyObserver)
+        dialog.setOnDismissListener { dialogLifecycle.removeObserver(destroyObserver) }
         dialog.show()
         val appContext = requireContext().applicationContext
         val started = BackupImportPipeline.start(appContext, data, createSafety) { message ->
