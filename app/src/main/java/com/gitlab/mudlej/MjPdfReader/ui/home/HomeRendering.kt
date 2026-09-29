@@ -237,13 +237,15 @@ internal class HomeRendering(
         val snapshot = recordSnapshot?.takeIf {
             it.revision == recordRevision && it.epoch == recordCache.epoch && it.access == access
         }
-        val visibleItems = libraryController.sort(snapshot?.items ?: metadata.items)
+        val recordItems = snapshot?.items ?: metadata.items
+        val displayIndex = libraryController.excludeMissingRecordFiles(recordItems, scanIndex)
+        val visibleItems = libraryController.sort(recordItems)
             .filter { it.availability != Availability.MISSING }
-        libraryTab.render(visibleItems, scanIndex)
+        libraryTab.render(visibleItems, displayIndex)
         if (!isStorageAccessCurrent(access)) return false
-        foldersTab.render(visibleItems, scanIndex)
-        if (binding.searchView.isShowing) submitSearchResults(visibleItems, scanIndex)
-        lastPresentedScanIndex = scanIndex
+        foldersTab.render(visibleItems, displayIndex)
+        if (binding.searchView.isShowing) submitSearchResults(visibleItems, displayIndex)
+        lastPresentedScanIndex = displayIndex
         allItems = visibleItems
         if (snapshot != null) {
             val commit = recentTab.renderTransaction<RenderCommit>(

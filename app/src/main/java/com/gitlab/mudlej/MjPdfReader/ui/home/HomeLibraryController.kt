@@ -106,6 +106,15 @@ class HomeLibraryController(
         }
     }
 
+    fun excludeMissingRecordFiles(records: List<HomeItem>, index: LibraryIndex): LibraryIndex {
+        val missingPaths = records.asSequence()
+            .filter { it.availability == Availability.MISSING && it.uri.scheme == "file" }
+            .mapNotNull { it.uri.path }
+            .toSet()
+        if (missingPaths.isEmpty()) return index
+        return index.copy(entries = index.entries.filterNot { it.path in missingPaths })
+    }
+
     fun mergeDuringDiscovery(records: List<HomeItem>, entries: List<ScannedPdfEntry>): List<HomeItem> {
         val recordsByPath = records
             .filter { it.uri.scheme == "file" }
