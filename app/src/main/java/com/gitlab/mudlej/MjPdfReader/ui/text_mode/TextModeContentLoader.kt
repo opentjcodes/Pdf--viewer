@@ -3,7 +3,11 @@
 package com.gitlab.mudlej.MjPdfReader.ui.text_mode
 
 import android.net.Uri
+import androidx.annotation.MainThread
 import androidx.appcompat.app.AppCompatActivity
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
+import com.gitlab.mudlej.MjPdfReader.core.debug.WeakRegistry
+import com.gitlab.mudlej.MjPdfReader.core.debug.PdfExtractorDebug
 import androidx.core.view.doOnNextLayout
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -56,6 +60,25 @@ class TextModeContentLoader(
         }
     }
 
+    init {
+        if (BuildConfig.DEBUG) {
+            debugInstances?.add(this)
+        }
+    }
+
+    data class TextCacheStats(val entryCount: Int, val pageKeys: List<Int>)
+
+    @MainThread
+    fun debugTextCacheStats(): TextCacheStats? {
+        if (!BuildConfig.DEBUG) {
+            return null
+        }
+        return TextCacheStats(
+            entryCount = textCache.size,
+            pageKeys = textCache.keys.toList(),
+        )
+    }
+
     suspend fun open(uri: Uri, password: String?): Boolean {
         val extractor = withContext(Dispatchers.IO) {
             extractionMutex.withLock {
@@ -86,6 +109,9 @@ class TextModeContentLoader(
                 pdfExtractor = extractor
                 pendingExtractor = null
                 pageCount = pdfExtractor.getPageCount()
+                if (BuildConfig.DEBUG) {
+                    PdfExtractorDebug.awaitTextModeSetupGate()
+                }
                 true
             }
         }
@@ -152,6 +178,9 @@ class TextModeContentLoader(
 
     fun close() {
         isClosing = true
+        if (BuildConfig.DEBUG) {
+            debugInstances?.remove(this)
+        }
         recyclerView.removeCallbacks(loadVisiblePagesRunnable)
         synchronized(extractionJobs) {
             extractionJobs.toList()
@@ -346,9 +375,13 @@ class TextModeContentLoader(
         }
     }
 
-    private companion object {
-        const val PREFETCH_DISTANCE = 2
-        const val JUMP_LOAD_AHEAD = 8
-        const val CACHE_PAGE_LIMIT = 24
+    companion object {
+        private val debugInstances = if (BuildConfig.DEBUG) WeakRegistry<TextModeContentLoader>() else null
+
+        fun debugLiveInstances(): List<TextModeContentLoader> = debugInstances?.snapshot().orEmpty()
+
+        private const val PREFETCH_DISTANCE = 2
+        private const val JUMP_LOAD_AHEAD = 8
+        private const val CACHE_PAGE_LIMIT = 24
     }
 }

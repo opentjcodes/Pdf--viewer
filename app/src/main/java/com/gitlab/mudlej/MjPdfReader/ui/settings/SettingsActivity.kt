@@ -9,6 +9,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SearchView
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.DebugRootDescription
 import com.gitlab.mudlej.MjPdfReader.core.ui.applyIncognitoNightModeFromIntent
 import com.gitlab.mudlej.MjPdfReader.core.ui.applyIncognitoOverlayFromIntent
 import com.gitlab.mudlej.MjPdfReader.core.ui.setupScreenChrome
@@ -30,6 +31,7 @@ class SettingsActivity : AppCompatActivity(), SettingsFragment.Navigation {
         applyIncognitoOverlayFromIntent()
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        DebugRootDescription.attachLayoutDirection(binding.root)
         setupScreenChrome()
 
         currentPage = savedInstanceState?.getString(CURRENT_PAGE_KEY)?.let(SettingsPage::valueOf)
@@ -45,7 +47,11 @@ class SettingsActivity : AppCompatActivity(), SettingsFragment.Navigation {
             }
         })
 
-        currentPage?.let { showPage(it, animate = false) } ?: showRoot(animate = false)
+        if (savedInstanceState == null) {
+            currentPage?.let { showPage(it, animate = false) } ?: showRoot(animate = false)
+        } else {
+            title = currentPage?.let { getString(it.titleRes) } ?: getString(R.string.settings)
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -69,9 +75,10 @@ class SettingsActivity : AppCompatActivity(), SettingsFragment.Navigation {
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         val item = menu.findItem(R.id.searchSettingsOption)
         item.isVisible = currentPage == null
-        if (currentPage == null && searchQuery.isNotBlank()) {
+        val queryToRestore = searchQuery
+        if (currentPage == null && queryToRestore.isNotBlank()) {
             item.expandActionView()
-            (item.actionView as? SearchView)?.setQuery(searchQuery, false)
+            (item.actionView as? SearchView)?.setQuery(queryToRestore, false)
         }
         return super.onPrepareOptionsMenu(menu)
     }
@@ -113,9 +120,10 @@ class SettingsActivity : AppCompatActivity(), SettingsFragment.Navigation {
                 return true
             }
         })
-        if (searchQuery.isNotBlank()) {
+        val queryToRestore = searchQuery
+        if (queryToRestore.isNotBlank()) {
             item.expandActionView()
-            view.setQuery(searchQuery, false)
+            view.setQuery(queryToRestore, false)
         }
     }
 

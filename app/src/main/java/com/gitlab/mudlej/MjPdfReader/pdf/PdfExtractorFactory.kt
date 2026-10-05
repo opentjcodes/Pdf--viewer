@@ -4,8 +4,9 @@ package com.gitlab.mudlej.MjPdfReader.pdf
 
 import android.content.Context
 import android.net.Uri
-import android.os.ParcelFileDescriptor
 import android.util.Log
+import com.github.barteksc.pdfviewer.source.FileSource
+import com.github.barteksc.pdfviewer.source.UriSource
 import com.gitlab.mudlej.MjPdfReader.core.io.forLog
 import com.gitlab.mudlej.MjPdfReader.data.OnlineDocumentStore
 import com.shockwave.pdfium.PdfiumCore
@@ -17,7 +18,7 @@ object PdfExtractorFactory {
     @Throws(IOException::class)
     fun create(context: Context, uri: Uri, password: String? = null): PdfExtractor {
         val pdfium = PdfiumCore(context)
-        val parcelFileDescriptor = context.contentResolver.openFileDescriptor(uri, "r")
+        val parcelFileDescriptor = UriSource.openReadDescriptor(context, uri)
         val pdfDocument = if (password.isNullOrEmpty()) {
             pdfium.newDocument(parcelFileDescriptor)
         } else {
@@ -29,7 +30,7 @@ object PdfExtractorFactory {
     @Throws(IOException::class)
     fun create(context: Context, file: File, password: String? = null): PdfExtractor {
         val pdfium = PdfiumCore(context)
-        val parcelFileDescriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+        val parcelFileDescriptor = FileSource.openReadDescriptor(context, file)
         val pdfDocument = try {
             if (password.isNullOrEmpty()) {
                 pdfium.newDocument(parcelFileDescriptor)

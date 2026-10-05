@@ -13,6 +13,7 @@ import androidx.appcompat.widget.SearchView
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.DebugRootDescription
 import com.gitlab.mudlej.MjPdfReader.core.ui.attachFilterSearchView
 import com.gitlab.mudlej.MjPdfReader.core.ui.setupScreenChrome
 import com.gitlab.mudlej.MjPdfReader.core.ui.applyIncognitoNightModeFromIntent
@@ -48,6 +49,7 @@ class TableOfContentsActivity : AppCompatActivity(), TableOfContentsFunctions {
         applyIncognitoOverlayFromIntent()
         binding = ActivityTableOfContentsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        DebugRootDescription.attachLayoutDirection(binding.root)
         setupScreenChrome()
         title = getString(R.string.loading)
         currentPageIndex = intent.getIntExtra(PDF.pageNumberKey, -1)

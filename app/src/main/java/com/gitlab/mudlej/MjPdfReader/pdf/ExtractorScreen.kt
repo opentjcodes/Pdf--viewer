@@ -5,6 +5,7 @@ package com.gitlab.mudlej.MjPdfReader.pdf
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.gitlab.mudlej.MjPdfReader.core.ui.toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -37,7 +38,7 @@ class ExtractorScreen(private val activity: AppCompatActivity) {
                 }
             }
             if (opened == null) {
-                Toast.makeText(activity, failureMessage, Toast.LENGTH_SHORT).show()
+                toast(activity, failureMessage, Toast.LENGTH_SHORT)
                 activity.finish()
                 return@launch
             }

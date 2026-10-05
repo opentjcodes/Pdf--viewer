@@ -1,0 +1,1150 @@
+diff --git a/core/fpdftext/cpdf_textpage.cpp b/core/fpdftext/cpdf_textpage.cpp
+index 13ff0303792ee6c023515f3cd22999eaed91e487..44bde7f76f4605e06a11bdf2e0ebb2d6d38e74a8 100644
+--- a/core/fpdftext/cpdf_textpage.cpp
++++ b/core/fpdftext/cpdf_textpage.cpp
+@@ -739,11 +739,53 @@ void CPDF_TextPage::AppendGeneratedCharacter(wchar_t unicode,
+   }
+ }
+ 
++void CPDF_TextPage::CollectActualTextBounds(const CPDF_PageObjectHolder* holder,
++                                            size_t form_occurrence,
++                                            size_t& next_form_occurrence) {
++  for (const auto& page_obj : *holder) {
++    if (!page_obj->IsActive()) {
++      continue;
++    }
++    if (page_obj->IsForm()) {
++      // Match the depth-first invocation numbering in ProcessFormObject().
++      const size_t occurrence = ++next_form_occurrence;
++      CollectActualTextBounds(page_obj->AsForm()->form(), occurrence,
++                              next_form_occurrence);
++      continue;
++    }
++    if (!page_obj->IsText()) {
++      continue;
++    }
++
++    const CPDF_ContentMarks* marks = page_obj->GetContentMarks();
++    const CPDF_ContentMarkItem* actual_text_item = nullptr;
++    for (size_t i = 0; i < marks->CountItems(); ++i) {
++      const CPDF_ContentMarkItem* item = marks->GetItem(i);
++      RetainPtr<const CPDF_Dictionary> dict = item->GetParam();
++      if (dict && dict->GetStringFor("ActualText")) {
++        actual_text_item = item;
++      }
++    }
++    if (!actual_text_item) {
++      continue;
++    }
++
++    auto& bounds = actual_text_bounds_[form_occurrence];
++    auto [it, inserted] =
++        bounds.try_emplace(actual_text_item, page_obj->GetRect());
++    if (!inserted) {
++      it->second.Union(page_obj->GetRect());
++    }
++  }
++}
++
+ void CPDF_TextPage::ProcessObject() {
+   if (page_->GetActivePageObjectCount() == 0) {
+     return;
+   }
+-
++  // Collect complete replacement spans before spatial sorting can emit them.
++  size_t next_form_occurrence = 0;
++  CollectActualTextBounds(page_, 0, next_form_occurrence);
+   textline_dir_ = FindTextlineFlowOrientation();
+   for (auto it = page_->begin(); it != page_->end(); ++it) {
+     CPDF_PageObject* page_obj = it->get();
+@@ -764,6 +806,8 @@ void CPDF_TextPage::ProcessObject() {
+ 
+ void CPDF_TextPage::ProcessFormObject(CPDF_FormObject* form_obj,
+                                       const CFX_Matrix& form_matrix) {
++  const size_t previous_occurrence = form_occurrence_;
++  form_occurrence_ = ++next_form_occurrence_;
+   CFX_Matrix actual_form_matrix = form_obj->form_matrix() * form_matrix;
+   const CPDF_PageObjectHolder* holder = form_obj->form();
+   for (auto it = holder->begin(); it != holder->end(); ++it) {
+@@ -778,6 +822,7 @@ void CPDF_TextPage::ProcessFormObject(CPDF_FormObject* form_obj,
+       ProcessFormObject(page_obj->AsForm(), actual_form_matrix);
+     }
+   }
++  form_occurrence_ = previous_occurrence;
+ }
+ 
+ void CPDF_TextPage::AddCharInfo(wchar_t wc, const CharInfo& info, bool is_rtl) {
+@@ -885,6 +930,7 @@ void CPDF_TextPage::ProcessTextObject(
+   TransformedTextObject new_obj;
+   new_obj.text_obj_ = text_obj;
+   new_obj.form_matrix_ = form_matrix;
++  new_obj.form_occurrence_ = form_occurrence_;
+   if (text_objects_.empty()) {
+     text_objects_.push_back(new_obj);
+     return;
+@@ -942,7 +988,8 @@ void CPDF_TextPage::ProcessTextObject(
+ }
+ 
+ CPDF_TextPage::MarkedContentState CPDF_TextPage::PreMarkedContent(
+-    const CPDF_TextObject* text_obj) {
++    const TransformedTextObject& obj) const {
++  const CPDF_TextObject* text_obj = obj.text_obj_;
+   const CPDF_ContentMarks* marks = text_obj->GetContentMarks();
+   const size_t content_marks_count = marks->CountItems();
+   if (content_marks_count == 0) {
+@@ -950,37 +997,36 @@ CPDF_TextPage::MarkedContentState CPDF_TextPage::PreMarkedContent(
+   }
+ 
+   WideString actual_text;
+-  bool bExist = false;
+-  RetainPtr<const CPDF_Dictionary> dict;
++  const CPDF_ContentMarkItem* actual_text_item = nullptr;
+   for (size_t i = 0; i < content_marks_count; ++i) {
+     const CPDF_ContentMarkItem* item = marks->GetItem(i);
+-    dict = item->GetParam();
++    RetainPtr<const CPDF_Dictionary> dict = item->GetParam();
+     if (!dict) {
+       continue;
+     }
+     RetainPtr<const CPDF_String> temp = dict->GetStringFor("ActualText");
+     if (temp) {
+-      bExist = true;
++      actual_text_item = item;
+       actual_text = temp->GetUnicodeText();
+     }
+   }
+-  if (!bExist) {
++  if (!actual_text_item) {
+     return MarkedContentState::kPass;
+   }
+ 
+-  if (prev_text_obj_) {
+-    const CPDF_ContentMarks* prev_marks = prev_text_obj_->GetContentMarks();
+-    if (prev_marks->CountItems() == content_marks_count &&
+-        prev_marks->GetItem(content_marks_count - 1)->GetParam() == dict) {
+-      return MarkedContentState::kDone;
+-    }
+-  }
+-
+   if (actual_text.IsEmpty()) {
+     return MarkedContentState::kPass;
+   }
+ 
+-  bExist = false;
++  // Spatial sorting can interleave objects from one replacement span. The mark
++  // item identifies a BDC occurrence; a reused Form is a separate occurrence.
++  auto processed = processed_actual_text_.find(obj.form_occurrence_);
++  if (processed != processed_actual_text_.end() &&
++      processed->second.contains(actual_text_item)) {
++    return MarkedContentState::kDone;
++  }
++
++  bool bExist = false;
+   for (size_t i = 0; i < actual_text.GetLength(); ++i) {
+     wchar_t wc = actual_text[i];
+     if ((wc > 0x80 && wc < 0xFFFD) || (wc <= 0x80 && isprint(wc))) {
+@@ -1000,11 +1046,17 @@ void CPDF_TextPage::ProcessMarkedContent(const TransformedTextObject& obj) {
+   const CPDF_ContentMarks* marks = text_obj->GetContentMarks();
+   const size_t content_marks_count = marks->CountItems();
+   WideString actual_text;
++  const CPDF_ContentMarkItem* actual_text_item = nullptr;
+   for (size_t n = 0; n < content_marks_count; ++n) {
+     const CPDF_ContentMarkItem* item = marks->GetItem(n);
+     RetainPtr<const CPDF_Dictionary> dict = item->GetParam();
+     if (dict) {
+-      actual_text = dict->GetUnicodeTextFor("ActualText");
++      RetainPtr<const CPDF_String> replacement =
++          dict->GetStringFor("ActualText");
++      if (replacement) {
++        actual_text_item = item;
++        actual_text = replacement->GetUnicodeText();
++      }
+     }
+   }
+   if (actual_text.IsEmpty()) {
+@@ -1013,7 +1065,10 @@ void CPDF_TextPage::ProcessMarkedContent(const TransformedTextObject& obj) {
+ 
+   const bool is_rtl = IsRightToLeft(*text_obj);
+   CFX_Matrix matrix = text_obj->GetTextMatrix() * obj.form_matrix_;
+-  CFX_FloatRect rect = text_obj->GetRect();
++  const CFX_PointF origin = obj.form_matrix_.Transform(text_obj->GetPos());
++  // Union in the containing Form's space, then split before transforming.
++  CFX_FloatRect rect =
++      actual_text_bounds_.at(obj.form_occurrence_).at(actual_text_item);
+   float step = 0;
+ 
+   if (is_rtl) {
+@@ -1024,7 +1079,7 @@ void CPDF_TextPage::ProcessMarkedContent(const TransformedTextObject& obj) {
+     step = rect.Width();
+   }
+ 
+-  RetainPtr<CPDF_Font> const font = text_obj->GetFont();
++  const size_t original_size = temp_char_list_.size();
+   for (size_t k = 0; k < actual_text.GetLength(); ++k) {
+     wchar_t wc = actual_text[k];
+     if (wc <= 0x80 && !isprint(wc)) {
+@@ -1036,10 +1091,14 @@ void CPDF_TextPage::ProcessMarkedContent(const TransformedTextObject& obj) {
+ 
+     CFX_FloatRect char_box(rect);
+     char_box.Translate(k * step, 0);
++    char_box = obj.form_matrix_.TransformRect(char_box);
+     temp_text_buf_.AppendChar(wc);
+-    temp_char_list_.push_back(
+-        CharInfo(CharType::kActualText, CPDF_Font::kInvalidCharCode, wc,
+-                 text_obj->GetPos(), char_box, matrix, text_obj));
++    temp_char_list_.push_back(CharInfo(CharType::kActualText,
++                                        CPDF_Font::kInvalidCharCode, wc, origin,
++                                        char_box, matrix, text_obj));
++  }
++  if (temp_char_list_.size() != original_size) {
++    processed_actual_text_[obj.form_occurrence_].insert(actual_text_item);
+   }
+ }
+ 
+@@ -1078,7 +1137,7 @@ void CPDF_TextPage::ProcessTransformedTextObjects() {
+     }
+ 
+     const CFX_Matrix& form_matrix = obj.form_matrix_;
+-    const MarkedContentState ePreMKC = PreMarkedContent(text_obj);
++    const MarkedContentState ePreMKC = PreMarkedContent(obj);
+     if (ePreMKC == MarkedContentState::kDone) {
+       prev_text_obj_ = text_obj;
+       prev_matrix_ = form_matrix;
+diff --git a/core/fpdftext/cpdf_textpage.h b/core/fpdftext/cpdf_textpage.h
+index be83cc9879919e77f71197dca9a94b5cbf494774..31cb9662a7986d88edb63c1fa92104830a9330fa 100644
+--- a/core/fpdftext/cpdf_textpage.h
++++ b/core/fpdftext/cpdf_textpage.h
+@@ -10,7 +10,9 @@
+ #include <stdint.h>
+ 
+ #include <functional>
++#include <map>
+ #include <optional>
++#include <set>
+ #include <vector>
+ 
+ #include "core/fpdfapi/page/cpdf_pageobjectholder.h"
+@@ -21,6 +23,7 @@
+ #include "core/fxcrt/widestring.h"
+ #include "core/fxcrt/widetext_buffer.h"
+ 
++class CPDF_ContentMarkItem;
+ class CPDF_FormObject;
+ class CPDF_Page;
+ class CPDF_TextObject;
+@@ -135,10 +138,14 @@ class CPDF_TextPage {
+ 
+     UnownedPtr<CPDF_TextObject> text_obj_;
+     CFX_Matrix form_matrix_;
++    size_t form_occurrence_ = 0;
+   };
+ 
+   void Init();
+   bool IsHyphen(wchar_t current_char) const;
++  void CollectActualTextBounds(const CPDF_PageObjectHolder* holder,
++                               size_t form_occurrence,
++                               size_t& next_form_occurrence);
+   void ProcessObject();
+   void ProcessFormObject(CPDF_FormObject* form_obj,
+                          const CFX_Matrix& form_matrix);
+@@ -172,7 +179,7 @@ class CPDF_TextPage {
+   bool IsSameTextObject(CPDF_TextObject* text_obj1,
+                         CPDF_TextObject* text_obj2) const;
+   void CloseTempLine();
+-  MarkedContentState PreMarkedContent(const CPDF_TextObject* text_obj);
++  MarkedContentState PreMarkedContent(const TransformedTextObject& obj) const;
+   void ProcessMarkedContent(const TransformedTextObject& obj);
+   void FindPreviousTextObject();
+   void AddCharInfo(wchar_t wc, const CharInfo& info, bool is_rtl);
+@@ -202,6 +209,11 @@ class CPDF_TextPage {
+   std::vector<TransformedTextObject> text_objects_;
+   TextOrientation textline_dir_ = TextOrientation::kUnknown;
+   CFX_FloatRect curline_rect_;
++  size_t form_occurrence_ = 0;
++  size_t next_form_occurrence_ = 0;
++  std::map<size_t, std::set<const CPDF_ContentMarkItem*>> processed_actual_text_;
++  std::map<size_t, std::map<const CPDF_ContentMarkItem*, CFX_FloatRect>>
++      actual_text_bounds_;
+ };
+ 
+ #endif  // CORE_FPDFTEXT_CPDF_TEXTPAGE_H_
+diff --git a/fpdfsdk/fpdf_text_embeddertest.cpp b/fpdfsdk/fpdf_text_embeddertest.cpp
+index 7740e9e8179a147a3bb890a249c276552689caaf..43b0f60496a4650c04002c9c8ea2f43c94b59515 100644
+--- a/fpdfsdk/fpdf_text_embeddertest.cpp
++++ b/fpdfsdk/fpdf_text_embeddertest.cpp
+@@ -2507,6 +2507,186 @@ TEST_F(FPDFTextEmbedderTest, Bug554790604) {
+               ElementsAreArray(kExpectedChars));
+ }
+ 
++TEST_F(FPDFTextEmbedderTest, ActualTextFormTransform) {
++  ASSERT_TRUE(OpenDocument("actualtext_form_transform.pdf"));
++
++  // Type 3 glyph bounds and the text matrix give local boxes
++  // A=[10 20 20 44], B=[20 20 30 44]. Transform each local slice.
++  static constexpr struct {
++    const char* name;
++    FS_RECTF boxes[2];
++    double origin_x;
++    double origin_y;
++  } kCases[] = {
++      {"ordinary", {{10, 44, 20, 20}, {20, 44, 30, 20}}, 10, 20},
++      {"identity", {{10, 44, 20, 20}, {20, 44, 30, 20}}, 10, 20},
++      {"translated", {{110, 244, 120, 220}, {120, 244, 130, 220}}, 110, 220},
++      {"scaled", {{120, 332, 140, 260}, {140, 332, 160, 260}}, 120, 260},
++      {"nested_y_reflection", {{147, 324, 167, 252}, {167, 324, 187, 252}},
++       147, 324},
++      {"nested_x_reflection", {{259, 282, 279, 210}, {239, 282, 259, 210}},
++       279, 210},
++      {"nested_rotation", {{248, 171, 320, 151}, {248, 191, 320, 171}},
++       320, 151},
++  };
++  static constexpr unsigned short kExpectedText[] = {'A', 'B', 0};
++  ASSERT_EQ(static_cast<int>(std::size(kCases)), FPDF_GetPageCount(document()));
++  for (int page_index = 0; page_index < static_cast<int>(std::size(kCases));
++       ++page_index) {
++    const auto& test_case = kCases[page_index];
++    SCOPED_TRACE(test_case.name);
++    ScopedPage page = LoadScopedPage(page_index);
++    ASSERT_TRUE(page);
++    ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++    ASSERT_TRUE(text_page);
++    EXPECT_EQ(2, FPDFText_CountChars(text_page.get()));
++    unsigned short buffer[4] = {};
++    EXPECT_EQ(3, FPDFText_GetText(text_page.get(), 0, 3, buffer));
++    EXPECT_THAT(pdfium::span(buffer).first<3>(), ElementsAreArray(kExpectedText));
++    double x;
++    double y;
++    ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), 0, &x, &y));
++    EXPECT_NEAR_THREE_PLACES(test_case.origin_x, x);
++    EXPECT_NEAR_THREE_PLACES(test_case.origin_y, y);
++    for (int char_index = 0; char_index < 2; ++char_index) {
++      SCOPED_TRACE(char_index);
++      const auto& expected = test_case.boxes[char_index];
++      RectDouble tight;
++      ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), char_index, &tight.left,
++                                     &tight.right, &tight.bottom, &tight.top));
++      CompareFS_RECT_DOUBLE_Three_Places(
++          {expected.left, expected.top, expected.right, expected.bottom}, tight);
++      FS_RECTF loose;
++      ASSERT_TRUE(FPDFText_GetLooseCharBox(text_page.get(), char_index, &loose));
++      CompareFS_RECTF_Three_Places(expected, loose);
++      unsigned short bounded[2] = {};
++      EXPECT_EQ(2, FPDFText_GetBoundedText(
++                       text_page.get(), expected.left + 0.1, expected.top - 0.1,
++                       expected.right - 0.1, expected.bottom + 0.1, bounded,
++                       std::size(bounded)));
++      EXPECT_EQ(kExpectedText[char_index], bounded[0]);
++      EXPECT_EQ(0, bounded[1]);
++      EXPECT_EQ(char_index,
++                FPDFText_GetCharIndexAtPos(
++                    text_page.get(), (expected.left + expected.right) / 2,
++                    (expected.bottom + expected.top) / 2, 0, 0));
++    }
++  }
++}
++
++TEST_F(FPDFTextEmbedderTest, ActualTextInterleaved) {
++  ASSERT_TRUE(OpenDocument("actualtext_interleaved.pdf"));
++  static constexpr struct {
++    std::array<unsigned short, 3> text;
++    int char_count;
++    int a_count;
++  } kCases[] = {
++      {{'A', 'B', 0}, 2, 1}, {{'A', 'B', 0}, 2, 1},
++      {{'A', 'A', 0}, 2, 2}, {{'A', 0, 0}, 1, 1},
++      {{'A', 'A', 0}, 2, 2}, {{'A', 'A', 0}, 2, 2},
++      {{'A', 'A', 0}, 2, 2}, {{'A', 0, 0}, 1, 1},
++  };
++  ASSERT_EQ(static_cast<int>(std::size(kCases)), FPDF_GetPageCount(document()));
++  // Cover interleaving, reused property dictionaries, nested non-replacement
++  // marks, separate equal-payload spans, and repeated Form invocations.
++  for (int page_index = 0; page_index < static_cast<int>(std::size(kCases));
++       ++page_index) {
++    SCOPED_TRACE(page_index);
++    const auto& test_case = kCases[page_index];
++    ScopedPage page = LoadScopedPage(page_index);
++    ASSERT_TRUE(page);
++    ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++    ASSERT_TRUE(text_page);
++    EXPECT_EQ(test_case.char_count, FPDFText_CountChars(text_page.get()));
++    unsigned short buffer[4] = {};
++    EXPECT_EQ(test_case.char_count + 1,
++              FPDFText_GetText(text_page.get(), 0, 3, buffer));
++    const size_t text_size = static_cast<size_t>(test_case.char_count + 1);
++    EXPECT_THAT(pdfium::span(buffer).first(text_size),
++                ElementsAreArray(pdfium::span(test_case.text)
++                                     .first(text_size)));
++    ScopedFPDFWideString query = GetFPDFWideString(L"A");
++    ScopedFPDFTextFind search(
++        FPDFText_FindStart(text_page.get(), query.get(), FPDF_MATCHCASE, 0));
++    ASSERT_TRUE(search);
++    for (int index = 0; index < test_case.a_count; ++index) {
++      ASSERT_TRUE(FPDFText_FindNext(search.get()));
++      EXPECT_EQ(index, FPDFText_GetSchResultIndex(search.get()));
++      EXPECT_EQ(1, FPDFText_GetSchCount(search.get()));
++    }
++    EXPECT_FALSE(FPDFText_FindNext(search.get()));
++  }
++}
++
++TEST_F(FPDFTextEmbedderTest, ActualTextInterleavedBounds) {
++  ASSERT_TRUE(OpenDocument("actualtext_interleaved.pdf"));
++  // Both the split span and the single-object control cover both halves of A.
++  for (int page_index = 0; page_index < 2; ++page_index) {
++    SCOPED_TRACE(page_index);
++    ScopedPage page = LoadScopedPage(page_index);
++    ASSERT_TRUE(page);
++    ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++    ASSERT_TRUE(text_page);
++
++    RectDouble tight;
++    ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), 0, &tight.left,
++                                    &tight.right, &tight.bottom, &tight.top));
++    CompareFS_RECT_DOUBLE_Three_Places({20, 66, 30, 50}, tight);
++    FS_RECTF loose;
++    ASSERT_TRUE(FPDFText_GetLooseCharBox(text_page.get(), 0, &loose));
++    CompareFS_RECTF_Three_Places({20, 66, 30, 50}, loose);
++
++    ASSERT_EQ(1, FPDFText_CountRects(text_page.get(), 0, 1));
++    RectDouble selection;
++    ASSERT_TRUE(FPDFText_GetRect(text_page.get(), 0, &selection.left,
++                                 &selection.top, &selection.right,
++                                 &selection.bottom));
++    CompareFS_RECT_DOUBLE_Three_Places({20, 66, 30, 50}, selection);
++
++    unsigned short buffer[2] = {};
++    EXPECT_EQ(2, FPDFText_GetBoundedText(text_page.get(), 26, 65, 29, 51,
++                                         buffer, std::size(buffer)));
++    EXPECT_THAT(buffer, ElementsAreArray("A"));
++    EXPECT_EQ(0, FPDFText_GetCharIndexAtPos(text_page.get(), 27.5, 58, 0, 0));
++  }
++}
++
++TEST_F(FPDFTextEmbedderTest, ActualTextHyphenSkippedObject) {
++  ASSERT_TRUE(OpenDocument("actualtext_hyphen.pdf"));
++  ASSERT_EQ(2, FPDF_GetPageCount(document()));
++  // Keep the existing hyphen sentinel, including in the single-object control.
++  static constexpr unsigned short kExpectedText[] = {'A', 0xfffe, 'B', 0};
++  for (int page_index = 0; page_index < 2; ++page_index) {
++    SCOPED_TRACE(page_index);
++    ScopedPage page = LoadScopedPage(page_index);
++    ASSERT_TRUE(page);
++    ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++    ASSERT_TRUE(text_page);
++    EXPECT_EQ(3, FPDFText_CountChars(text_page.get()));
++    unsigned short buffer[4] = {};
++    EXPECT_EQ(4, FPDFText_GetText(text_page.get(), 0, 3, buffer));
++    EXPECT_THAT(buffer, ElementsAreArray(kExpectedText));
++    EXPECT_EQ(static_cast<unsigned int>('B'),
++              FPDFText_GetUnicode(text_page.get(), 2));
++    EXPECT_EQ(2, FPDFText_GetText(text_page.get(), 2, 1, buffer));
++    EXPECT_THAT(pdfium::span(buffer).first<2>(), ElementsAreArray("B"));
++
++    RectDouble tight;
++    ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), 2, &tight.left,
++                                    &tight.right, &tight.bottom, &tight.top));
++    CompareFS_RECT_DOUBLE_Three_Places({20, 66, 40, 50}, tight);
++
++    ScopedFPDFWideString query = GetFPDFWideString(L"B");
++    ScopedFPDFTextFind search(
++        FPDFText_FindStart(text_page.get(), query.get(), FPDF_MATCHCASE, 0));
++    ASSERT_TRUE(search);
++    ASSERT_TRUE(FPDFText_FindNext(search.get()));
++    EXPECT_EQ(2, FPDFText_GetSchResultIndex(search.get()));
++    EXPECT_EQ(1, FPDFText_GetSchCount(search.get()));
++    EXPECT_FALSE(FPDFText_FindNext(search.get()));
++  }
++}
++
+ TEST_F(FPDFTextEmbedderTest, ActualTextRtl) {
+   ASSERT_TRUE(OpenDocument("actual_text_rtl.pdf"));
+   ScopedPage page = LoadScopedPage(0);
+diff --git a/testing/resources/actualtext_form_transform.in b/testing/resources/actualtext_form_transform.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..8b5b7dba333a39a7cae7db3cb69210c194a0c65b
+--- /dev/null
++++ b/testing/resources/actualtext_form_transform.in
+@@ -0,0 +1,227 @@
++{{header}}
++% The Type 3 font visibly draws AB with width 500 and bounds [0 0 500 800].
++% At size 10 with Tm [2 0 0 3 10 20], the character rectangles in Form space
++% are A=[10 20 20 44], B=[20 20 30 44] (left, bottom, right, top).
++% Pages: ordinary text, identity Form, translation, scale, nested Y reflection,
++% nested X reflection, nested quarter-turn. All pages represent logical AB.
++{{object 1 0}} <<
++  /Type /Catalog
++  /Pages 2 0 R
++>>
++endobj
++{{object 2 0}} <<
++  /Type /Pages
++  /Count 7
++  /Kids [3 0 R 4 0 R 5 0 R 6 0 R 7 0 R 8 0 R 9 0 R]
++  /MediaBox [0 0 600 600]
++>>
++endobj
++{{object 3 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 10 0 R
++  /Resources << /Font << /F1 24 0 R >> >>
++>>
++endobj
++{{object 4 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 11 0 R
++  /Resources << /XObject << /Fm 17 0 R >> >>
++>>
++endobj
++{{object 5 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 11 0 R
++  /Resources << /XObject << /Fm 18 0 R >> >>
++>>
++endobj
++{{object 6 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 11 0 R
++  /Resources << /XObject << /Fm 19 0 R >> >>
++>>
++endobj
++{{object 7 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 12 0 R
++  /Resources << /XObject << /Fm 21 0 R >> >>
++>>
++endobj
++{{object 8 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 12 0 R
++  /Resources << /XObject << /Fm 22 0 R >> >>
++>>
++endobj
++{{object 9 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 12 0 R
++  /Resources << /XObject << /Fm 23 0 R >> >>
++>>
++endobj
++{{object 10 0}} <<
++  {{streamlen}}
++>>
++stream
++BT
++/F1 10 Tf
++2 0 0 3 10 20 Tm
++(AB) Tj
++ET
++endstream
++endobj
++{{object 11 0}} <<
++  {{streamlen}}
++>>
++stream
++/Fm Do
++endstream
++endobj
++{{object 12 0}} <<
++  {{streamlen}}
++>>
++stream
++q
++1 0 0 1 13 17 cm
++/Fm Do
++Q
++endstream
++endobj
++{{object 17 0}} <<
++  /Type /XObject
++  /Subtype /Form
++  /BBox [0 0 50 60]
++  /Resources << /Font << /F1 24 0 R >> >>
++  {{streamlen}}
++>>
++stream
++/Span << /ActualText <FEFF00410042> >> BDC
++BT
++/F1 10 Tf
++2 0 0 3 10 20 Tm
++(AB) Tj
++ET
++EMC
++endstream
++endobj
++{{object 18 0}} <<
++  /Type /XObject
++  /Subtype /Form
++  /BBox [0 0 50 60]
++  /Matrix [1 0 0 1 100 200]
++  /Resources << /XObject << /Text 17 0 R >> >>
++  {{streamlen}}
++>>
++stream
++/Text Do
++endstream
++endobj
++{{object 19 0}} <<
++  /Type /XObject
++  /Subtype /Form
++  /BBox [0 0 50 60]
++  /Matrix [2 0 0 3 100 200]
++  /Resources << /XObject << /Text 17 0 R >> >>
++  {{streamlen}}
++>>
++stream
++/Text Do
++endstream
++endobj
++{{object 20 0}} <<
++  /Type /XObject
++  /Subtype /Form
++  /BBox [0 0 50 60]
++  /Matrix [1 0 0 1 7 11]
++  /Resources << /XObject << /Text 17 0 R >> >>
++  {{streamlen}}
++>>
++stream
++/Text Do
++endstream
++endobj
++{{object 21 0}} <<
++  /Type /XObject
++  /Subtype /Form
++  /BBox [0 0 60 80]
++  /Matrix [2 0 0 -3 100 400]
++  /Resources << /XObject << /Inner 20 0 R >> >>
++  {{streamlen}}
++>>
++stream
++/Inner Do
++endstream
++endobj
++{{object 22 0}} <<
++  /Type /XObject
++  /Subtype /Form
++  /BBox [0 0 60 80]
++  /Matrix [-2 0 0 3 300 100]
++  /Resources << /XObject << /Inner 20 0 R >> >>
++  {{streamlen}}
++>>
++stream
++/Inner Do
++endstream
++endobj
++{{object 23 0}} <<
++  /Type /XObject
++  /Subtype /Form
++  /BBox [0 0 60 80]
++  /Matrix [0 2 -3 0 400 100]
++  /Resources << /XObject << /Inner 20 0 R >> >>
++  {{streamlen}}
++>>
++stream
++/Inner Do
++endstream
++endobj
++{{object 24 0}} <<
++  /Type /Font
++  /Subtype /Type3
++  /FontBBox [0 0 500 800]
++  /FontMatrix [0.001 0 0 0.001 0 0]
++  /CharProcs << /A 25 0 R /B 26 0 R >>
++  /Encoding << /Type /Encoding /Differences [65 /A /B] >>
++  /FirstChar 65
++  /LastChar 66
++  /Widths [500 500]
++  /Resources << >>
++>>
++endobj
++{{object 25 0}} <<
++  {{streamlen}}
++>>
++stream
++500 0 0 0 500 800 d1
++0 0 100 700 re
++400 0 100 700 re
++100 700 300 100 re
++100 350 300 100 re
++f
++endstream
++endobj
++{{object 26 0}} <<
++  {{streamlen}}
++>>
++stream
++500 0 0 0 500 800 d1
++0 0 100 800 re
++100 700 300 100 re
++100 350 300 100 re
++100 0 300 100 re
++400 450 100 250 re
++400 100 100 250 re
++f
++endstream
++endobj
++{{xref}}
++{{trailer}}
++{{startxref}}
++%%EOF
+diff --git a/testing/resources/actualtext_hyphen.in b/testing/resources/actualtext_hyphen.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..57e0cabc70d26964c6657a6757804928a7cd4b65
+--- /dev/null
++++ b/testing/resources/actualtext_hyphen.in
+@@ -0,0 +1,110 @@
++{{header}}
++% Both pages have ActualText A- on the first line and B on the second.
++% B covers a hyphen-mapped glyph and a B-mapped glyph at x=20 and x=30.
++% Page 0 splits them into two text objects; page 1 is the single-object control.
++% Skipping the first object's hyphen must not consume the B replacement.
++% Both pages extract A U+FFFE B, retaining the existing hyphen sentinel.
++{{object 1 0}} <<
++  /Type /Catalog
++  /Pages 2 0 R
++>>
++endobj
++{{object 2 0}} <<
++  /Type /Pages
++  /Count 2
++  /Kids [3 0 R 4 0 R]
++  /MediaBox [0 0 300 200]
++  /Resources << /Font << /F1 7 0 R >> >>
++>>
++endobj
++{{object 3 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 5 0 R
++>>
++endobj
++{{object 4 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 6 0 R
++>>
++endobj
++{{object 5 0}} <<
++  {{streamlen}}
++>>
++stream
++/Span << /ActualText (A-) >> BDC
++BT /F1 20 Tf 1 0 0 1 20 100 Tm <01> Tj ET
++EMC
++/Span << /ActualText (B) >> BDC
++BT /F1 20 Tf 1 0 0 1 20 50 Tm <07> Tj ET
++BT /F1 20 Tf 1 0 0 1 30 50 Tm <06> Tj ET
++EMC
++endstream
++endobj
++{{object 6 0}} <<
++  {{streamlen}}
++>>
++stream
++/Span << /ActualText (A-) >> BDC
++BT /F1 20 Tf 1 0 0 1 20 100 Tm <01> Tj ET
++EMC
++/Span << /ActualText (B) >> BDC
++BT /F1 20 Tf 1 0 0 1 20 50 Tm <0706> Tj ET
++EMC
++endstream
++endobj
++{{object 7 0}} <<
++  /Type /Font
++  /Subtype /Type3
++  /FontBBox [0 0 500 800]
++  /FontMatrix [0.001 0 0 0.001 0 0]
++  /CharProcs << /G1 8 0 R /G6 8 0 R /G7 8 0 R >>
++  /Encoding << /Type /Encoding /Differences [1 /G1 6 /G6 /G7] >>
++  /FirstChar 1
++  /LastChar 7
++  /Widths [500 500 500 500 500 500 500]
++  /ToUnicode 9 0 R
++  /Resources << >>
++>>
++endobj
++{{object 8 0}} <<
++  {{streamlen}}
++>>
++stream
++500 0 0 0 500 800 d1
++0 0 500 800 re f
++endstream
++endobj
++{{object 9 0}} <<
++  {{streamlen}}
++>>
++stream
++/CIDInit /ProcSet findresource begin
++12 dict begin
++begincmap
++/CIDSystemInfo <<
++  /Registry (Adobe)
++  /Ordering (UCS)
++  /Supplement 0
++>> def
++/CMapName /ActualTextHyphen-UCS def
++/CMapType 2 def
++1 begincodespacerange
++<00> <FF>
++endcodespacerange
++3 beginbfchar
++<01> <0041>
++<06> <0042>
++<07> <002D>
++endbfchar
++endcmap
++CMapName currentdict /CMap defineresource pop
++end
++end
++endstream
++endobj
++{{xref}}
++{{trailer}}
++{{startxref}}
++%%EOF
+diff --git a/testing/resources/actualtext_interleaved.in b/testing/resources/actualtext_interleaved.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..3579b14883609e95a857b85fa55451386cc648bf
+--- /dev/null
++++ b/testing/resources/actualtext_interleaved.in
+@@ -0,0 +1,334 @@
++{{header}}
++% Pages 0/1 visibly draw AB. One ActualText span covers the two halves of A.
++% Page 0 uses two text objects for A; page 1 is the single-object control.
++% At size 20, A's halves occupy x=[20,25] and [25,30]. B's origin is x=22,
++% but its positive sidebearing places its ink at x=[30,40], after A.
++% Sorting by text-object origin interleaves B between A's halves on page 0.
++% Aleft/Aright are glyph pieces whose enclosing ActualText supplies one A.
++% The standalone B has an explicit ToUnicode mapping from code 0x43 to U+0042.
++% Page 2: separate BDCs reuse one property dictionary; expected AA.
++% Page 3: a non-ActualText mark encloses the entire outer replacement; expected A.
++% Pages 4/5: the same Form executes twice, translated/overprinted; expected AA.
++% Page 6: one Form contains distinct spans with equal replacement strings; AA.
++% Page 7: the innermost mark changes between halves of one replacement; A.
++{{object 1 0}} <<
++  /Type /Catalog
++  /Pages 2 0 R
++>>
++endobj
++{{object 2 0}} <<
++  /Type /Pages
++  /Count 8
++  /Kids [3 0 R 4 0 R 12 0 R 13 0 R 14 0 R 15 0 R 16 0 R 17 0 R]
++  /MediaBox [0 0 100 100]
++  /Resources << /Font << /F1 7 0 R >> >>
++>>
++endobj
++{{object 3 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 5 0 R
++>>
++endobj
++{{object 4 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 6 0 R
++>>
++endobj
++{{object 5 0}} <<
++  {{streamlen}}
++>>
++stream
++/Span << /ActualText <FEFF0041> >> BDC
++BT
++/F1 20 Tf
++1 0 0 1 20 50 Tm
++<41> Tj
++<42> Tj
++ET
++EMC
++BT
++/F1 20 Tf
++1 0 0 1 22 50 Tm
++<43> Tj
++ET
++endstream
++endobj
++{{object 6 0}} <<
++  {{streamlen}}
++>>
++stream
++/Span << /ActualText <FEFF0041> >> BDC
++BT
++/F1 20 Tf
++1 0 0 1 20 50 Tm
++<4142> Tj
++ET
++EMC
++BT
++/F1 20 Tf
++1 0 0 1 22 50 Tm
++<43> Tj
++ET
++endstream
++endobj
++{{object 7 0}} <<
++  /Type /Font
++  /Subtype /Type3
++  /FontBBox [0 0 900 800]
++  /FontMatrix [0.001 0 0 0.001 0 0]
++  /CharProcs << /Aleft 8 0 R /Aright 9 0 R /B 10 0 R >>
++  /Encoding << /Type /Encoding /Differences [65 /Aleft /Aright /B] >>
++  /FirstChar 65
++  /LastChar 67
++  /Widths [250 250 900]
++  /ToUnicode 11 0 R
++  /Resources << >>
++>>
++endobj
++{{object 8 0}} <<
++  {{streamlen}}
++>>
++stream
++250 0 0 0 250 800 d1
++0 0 100 700 re
++100 700 150 100 re
++100 350 150 100 re
++f
++endstream
++endobj
++{{object 9 0}} <<
++  {{streamlen}}
++>>
++stream
++250 0 0 0 250 800 d1
++150 0 100 700 re
++0 700 150 100 re
++0 350 150 100 re
++f
++endstream
++endobj
++{{object 10 0}} <<
++  {{streamlen}}
++>>
++stream
++900 0 400 0 900 800 d1
++400 0 100 800 re
++500 700 300 100 re
++500 350 300 100 re
++500 0 300 100 re
++800 450 100 250 re
++800 100 100 250 re
++f
++endstream
++endobj
++{{object 11 0}} <<
++  {{streamlen}}
++>>
++stream
++/CIDInit /ProcSet findresource begin
++12 dict begin
++begincmap
++/CIDSystemInfo <<
++  /Registry (Adobe)
++  /Ordering (UCS)
++  /Supplement 0
++>> def
++/CMapName /ActualTextInterleaved-UCS def
++/CMapType 2 def
++1 begincodespacerange
++<00> <FF>
++endcodespacerange
++1 beginbfchar
++<43> <0042>
++endbfchar
++endcmap
++CMapName currentdict /CMap defineresource pop
++end
++end
++endstream
++endobj
++{{object 12 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 18 0 R
++  /Resources <<
++    /Font << /F1 7 0 R >>
++    /Properties << /Replacement 24 0 R >>
++  >>
++>>
++endobj
++{{object 13 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 19 0 R
++>>
++endobj
++{{object 14 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 20 0 R
++  /Resources << /XObject << /Fm 25 0 R >> >>
++>>
++endobj
++{{object 15 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 21 0 R
++  /Resources << /XObject << /Fm 25 0 R >> >>
++>>
++endobj
++{{object 16 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 22 0 R
++  /Resources << /XObject << /Fm 26 0 R >> >>
++>>
++endobj
++{{object 17 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 23 0 R
++>>
++endobj
++{{object 18 0}} <<
++  {{streamlen}}
++>>
++stream
++/Span /Replacement BDC
++BT
++/F1 20 Tf
++1 0 0 1 20 50 Tm
++<4142> Tj
++ET
++EMC
++/Span /Replacement BDC
++BT
++/F1 20 Tf
++1 0 0 1 30 50 Tm
++<4142> Tj
++ET
++EMC
++endstream
++endobj
++{{object 19 0}} <<
++  {{streamlen}}
++>>
++stream
++/Span << /ActualText <FEFF0041> >> BDC
++/Span << /Lang (en-US) >> BDC
++BT
++/F1 20 Tf
++1 0 0 1 20 50 Tm
++<4142> Tj
++ET
++EMC
++EMC
++endstream
++endobj
++{{object 20 0}} <<
++  {{streamlen}}
++>>
++stream
++q
++1 0 0 1 20 50 cm
++/Fm Do
++Q
++q
++1 0 0 1 30 50 cm
++/Fm Do
++Q
++endstream
++endobj
++{{object 21 0}} <<
++  {{streamlen}}
++>>
++stream
++% Distinct Form executions retain distinct ActualText occurrences even when
++% their painting overlaps exactly. This is deliberately two logical A's.
++q
++1 0 0 1 20 50 cm
++/Fm Do
++Q
++q
++1 0 0 1 20 50 cm
++/Fm Do
++Q
++endstream
++endobj
++{{object 22 0}} <<
++  {{streamlen}}
++>>
++stream
++q
++1 0 0 1 20 50 cm
++/Fm Do
++Q
++endstream
++endobj
++{{object 23 0}} <<
++  {{streamlen}}
++>>
++stream
++/Span << /ActualText <FEFF0041> >> BDC
++BT
++/F1 20 Tf
++1 0 0 1 20 50 Tm
++<41> Tj
++/Span << /Lang (en-US) >> BDC
++<42> Tj
++EMC
++ET
++EMC
++endstream
++endobj
++{{object 24 0}} <<
++  /ActualText <FEFF0041>
++>>
++endobj
++{{object 25 0}} <<
++  /Type /XObject
++  /Subtype /Form
++  /BBox [0 0 10 16]
++  /Resources << /Font << /F1 7 0 R >> >>
++  {{streamlen}}
++>>
++stream
++/Span << /ActualText <FEFF0041> >> BDC
++BT
++/F1 20 Tf
++1 0 0 1 0 0 Tm
++<4142> Tj
++ET
++EMC
++endstream
++endobj
++{{object 26 0}} <<
++  /Type /XObject
++  /Subtype /Form
++  /BBox [0 0 20 16]
++  /Resources << /Font << /F1 7 0 R >> >>
++  {{streamlen}}
++>>
++stream
++/Span << /ActualText <FEFF0041> >> BDC
++BT
++/F1 20 Tf
++1 0 0 1 0 0 Tm
++<4142> Tj
++ET
++EMC
++/Span << /ActualText <FEFF0041> >> BDC
++BT
++/F1 20 Tf
++1 0 0 1 10 0 Tm
++<4142> Tj
++ET
++EMC
++endstream
++endobj
++{{xref}}
++{{trailer}}
++{{startxref}}
++%%EOF

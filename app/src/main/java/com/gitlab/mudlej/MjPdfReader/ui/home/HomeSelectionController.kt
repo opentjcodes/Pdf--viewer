@@ -30,7 +30,10 @@ class HomeSelectionController(
     private var toolbarActive = false
     private var context = SelectionContext.LIBRARY
 
-    val selectedHashes = mutableSetOf<String>()
+    private val keys = mutableSetOf<String>()
+
+    val selectedKeys: Set<String>
+        get() = keys.toSet()
 
     val active: Boolean
         get() = actionMode != null || toolbarActive
@@ -58,7 +61,7 @@ class HomeSelectionController(
             toggle(item)
             return true
         }
-        selectedHashes.add(item.hash)
+        keys.add(item.stableKey)
         context = currentContext()
         if (context == SelectionContext.SEARCH) {
             actionMode = activity.startSupportActionMode(actionModeCallback)
@@ -71,10 +74,10 @@ class HomeSelectionController(
     }
 
     fun toggle(item: HomeItem) {
-        if (!selectedHashes.remove(item.hash)) {
-            selectedHashes.add(item.hash)
+        if (!keys.remove(item.stableKey)) {
+            keys.add(item.stableKey)
         }
-        if (selectedHashes.isEmpty()) {
+        if (keys.isEmpty()) {
             finish()
             return
         }
@@ -104,7 +107,7 @@ class HomeSelectionController(
     }
 
     private fun endSelection() {
-        selectedHashes.clear()
+        keys.clear()
         onSelectionChanged()
     }
 
@@ -116,7 +119,7 @@ class HomeSelectionController(
     }
 
     private fun updateTitle() {
-        val title = activity.getString(R.string.home_selected_count, selectedHashes.size)
+        val title = activity.getString(R.string.home_selected_count, keys.size)
         actionMode?.title = title
         if (toolbarActive) {
             binding.selectionToolbar.title = title
@@ -124,7 +127,7 @@ class HomeSelectionController(
     }
 
     private fun selectedItems(): List<HomeItem> {
-        return currentItems().filter { it.hash in selectedHashes }
+        return currentItems().filter { it.stableKey in keys }
     }
 
     private fun handleAction(item: MenuItem): Boolean {

@@ -83,7 +83,7 @@ fun canWriteToDownloadFolder(context: Context): Boolean =
     else ContextCompat.checkSelfPermission(context,
         Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
 fun publicDownloadsCopy(name: String): File? = runCatching {
-    File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), name)
+    File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), ensurePdfFileName(name))
         .takeIf { name.isNotBlank() && it.isFile }
 }.getOrNull()
 val File.size get() = if (!exists()) 0.0 else length().toDouble()
@@ -93,14 +93,39 @@ val File.sizeInMb get() = sizeInKb / 1024
 private const val PDF_SUFFIX = ".pdf"
 private const val SHARE_CACHE_DIR = "share"
 private const val SHARE_CACHE_MAX_AGE_MILLIS = 24L * 60 * 60 * 1000
+private const val MAX_PDF_BASE_NAME_BYTES = 120
 
 fun ensurePdfFileName(name: String): String {
     val cleaned = name
         .replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001F]"), "_")
         .trim()
         .trim('.')
-    val base = cleaned.ifBlank { "Shared PDF" }
-    return if (base.endsWith(PDF_SUFFIX, ignoreCase = true)) base else base + PDF_SUFFIX
+    var base = cleaned
+    val hasPdfSuffix = base.endsWith(PDF_SUFFIX, ignoreCase = true)
+    val suffix = if (hasPdfSuffix) {
+        base.takeLast(PDF_SUFFIX.length)
+    } else {
+        PDF_SUFFIX
+    }
+    if (hasPdfSuffix) {
+        base = base.dropLast(PDF_SUFFIX.length)
+    }
+    base = base.trim().trim('.').ifBlank { "Shared PDF" }
+    return base.takeUtf8Bytes(MAX_PDF_BASE_NAME_BYTES) + suffix
+}
+
+private fun String.takeUtf8Bytes(maxBytes: Int): String = buildString {
+    var byteCount = 0
+    var index = 0
+    while (index < this@takeUtf8Bytes.length) {
+        val codePoint = this@takeUtf8Bytes.codePointAt(index)
+        val characters = Character.toChars(codePoint)
+        val codePointBytes = String(characters).toByteArray(StandardCharsets.UTF_8).size
+        if (byteCount + codePointBytes > maxBytes) break
+        append(characters)
+        byteCount += codePointBytes
+        index += Character.charCount(codePoint)
+    }
 }
 
 @Throws(IOException::class)

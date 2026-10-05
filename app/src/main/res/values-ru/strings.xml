@@ -546,7 +546,6 @@
     <string name="dracula">Дракула</string>
     <string name="text_size">Размер текста</string>
     <string name="go_to_page">Перейти на страницу</string>
-    <string name="no_input">Нет ввода!</string>
     <string name="go_to">Перейти</string>
     <string name="all_pages">Все страницы</string>
     <string name="grid_columns">Столбцы</string>
@@ -662,6 +661,7 @@
     <string name="home_scan_locations_save">Сохранить</string>
     <string name="home_scan_locations_up">Вверх</string>
     <string name="home_menu_scan_locations">Места сканирования</string>
+    <string name="home_menu_full_rescan">Полное повторное сканирование</string>
     <string name="home_search_hint">Поиск по библиотеке</string>
     <string name="home_tab_recent">Недавние</string>
     <string name="home_tab_library">Библиотека</string>
@@ -683,7 +683,9 @@
     <string name="home_chip_abandoned">Заброшено</string>
     <string name="home_chip_all_files">Все файлы</string>
     <string name="home_hero_progress_template">%1$d%% · %2$d/%3$d</string>
-    <string name="home_scanning_progress">Сканирование… найдено PDF: %1$d</string>
+    <string name="home_scan_finding">Поиск PDF… найдено: %1$d</string>
+    <string name="home_scan_reading_details">Чтение сведений PDF… %1$d из %2$d</string>
+    <string name="home_scan_incomplete">Сканирование не завершено… найдено PDF: %1$d</string>
     <string name="home_menu_title">Меню библиотеки</string>
     <string name="home_menu_view">Вид</string>
     <string name="home_menu_stats">Статистика библиотеки</string>
@@ -902,7 +904,7 @@
     <string name="auto_backup_failure_notice">Последняя автоматическая резервная копия не удалась.</string>
     <string name="auto_backup_stale_notice">Автоматическое резервное копирование не выполнялось более суток.</string>
     <string name="auto_backup_notice_action">Настройки резервного копирования</string>
-    <string name="home_recent_permission_message">Вашим книгам нужен доступ к файлам, чтобы снова открываться. Разрешите доступ, чтобы разблокировать их.</string>
+    <string name="home_recent_permission_message">Некоторые недавние документы нельзя проверить без доступа к файлам. Разрешите доступ, чтобы MJ PDF мог проверить и открыть их, если они всё ещё доступны.</string>
     <string name="home_list_badges_title">Значки в списке</string>
     <string name="home_list_badges_summary">Выберите, какие сведения показывать под именами файлов в режиме списка.</string>
     <string name="home_badge_pages">Количество страниц</string>

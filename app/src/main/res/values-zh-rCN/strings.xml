@@ -546,7 +546,6 @@
     <string name="dracula">Dracula</string>
     <string name="text_size">文字大小</string>
     <string name="go_to_page">前往页面</string>
-    <string name="no_input">无输入！</string>
     <string name="go_to">前往</string>
     <string name="all_pages">所有页面</string>
     <string name="grid_columns">列数</string>
@@ -662,6 +661,7 @@
     <string name="home_scan_locations_save">保存</string>
     <string name="home_scan_locations_up">上一级</string>
     <string name="home_menu_scan_locations">扫描位置</string>
+    <string name="home_menu_full_rescan">完整重新扫描</string>
     <string name="home_search_hint">搜索您的资料库</string>
     <string name="home_tab_recent">最近</string>
     <string name="home_tab_library">资料库</string>
@@ -683,7 +683,9 @@
     <string name="home_chip_abandoned">已放弃</string>
     <string name="home_chip_all_files">所有文件</string>
     <string name="home_hero_progress_template">%1$d%% · %2$d/%3$d</string>
-    <string name="home_scanning_progress">扫描中…… 已找到 %1$d 个 PDF</string>
+    <string name="home_scan_finding">正在查找 PDF… 已找到 %1$d 个</string>
+    <string name="home_scan_reading_details">正在读取 PDF 详情… %1$d/%2$d</string>
+    <string name="home_scan_incomplete">扫描未完成… 已找到 %1$d 个 PDF</string>
     <string name="home_menu_title">资料库菜单</string>
     <string name="home_menu_view">视图</string>
     <string name="home_menu_stats">资料库统计</string>
@@ -881,7 +883,7 @@
     <string name="auto_backup_failure_notice">上次自动备份失败。</string>
     <string name="auto_backup_stale_notice">自动备份已超过一天未运行。</string>
     <string name="auto_backup_notice_action">备份设置</string>
-    <string name="home_recent_permission_message">您的书籍需要文件访问权限才能再次打开。请允许访问以解锁它们。</string>
+    <string name="home_recent_permission_message">没有文件访问权限，无法检查某些最近使用的文档。请允许访问，以便 MJ PDF 在这些文档仍然可用时检查并打开它们。</string>
     <string name="home_list_badges_title">列表卡片标签</string>
     <string name="home_list_badges_summary">选择在列表视图中文件名下方显示哪些信息。</string>
     <string name="home_badge_pages">页数</string>

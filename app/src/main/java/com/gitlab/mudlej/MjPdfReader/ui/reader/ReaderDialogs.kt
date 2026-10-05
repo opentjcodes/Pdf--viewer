@@ -18,6 +18,7 @@ import android.widget.Toast
 import androidx.core.text.isDigitsOnly
 import com.gitlab.mudlej.MjPdfReader.R
 import com.gitlab.mudlej.MjPdfReader.ui.reader.DocumentState
+import com.gitlab.mudlej.MjPdfReader.core.ui.toast
 import com.gitlab.mudlej.MjPdfReader.pdf.PDF
 import com.gitlab.mudlej.MjPdfReader.data.Preferences
 import com.gitlab.mudlej.MjPdfReader.databinding.ActivityMainBinding
@@ -48,7 +49,7 @@ fun showMetaDialog(
     filePath: String? = null,
 ) {
     if (meta == null) {
-        Toast.makeText(context, "Cannot read PDF's meta data!", Toast.LENGTH_SHORT).show()
+        toast(context, "Cannot read PDF's meta data!", Toast.LENGTH_SHORT)
         return
     }
     try {
@@ -60,7 +61,7 @@ fun showMetaDialog(
     }
     catch (throwable: Throwable) {
         Log.e(TAG, "showMetaDialog: Failed to show File Properties Dialog", throwable)
-        Toast.makeText(context, "Failed to show file properties", Toast.LENGTH_SHORT).show()
+        toast(context, "Failed to show file properties", Toast.LENGTH_SHORT)
     }
 }
 

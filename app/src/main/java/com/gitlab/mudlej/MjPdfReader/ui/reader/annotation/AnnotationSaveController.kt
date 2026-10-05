@@ -23,6 +23,8 @@ import com.gitlab.mudlej.MjPdfReader.data.entity.PdfAnnotationSaveDestination
 import com.gitlab.mudlej.MjPdfReader.data.entity.PdfRecord
 import com.gitlab.mudlej.MjPdfReader.ui.reader.PostSaveAction
 import com.gitlab.mudlej.MjPdfReader.ui.reader.ReaderViewModel
+import com.gitlab.mudlej.MjPdfReader.core.debug.AnnotationTestHooks
+import com.gitlab.mudlej.MjPdfReader.core.debug.AnnotationTestHooks.SaveFault
 import com.gitlab.mudlej.MjPdfReader.core.ui.AppSnackbar
 import com.gitlab.mudlej.MjPdfReader.core.PermissionManager
 import com.gitlab.mudlej.MjPdfReader.core.io.UriCanonicalizer
@@ -30,6 +32,7 @@ import com.gitlab.mudlej.MjPdfReader.core.io.canWriteToDownloadFolder
 import com.gitlab.mudlej.MjPdfReader.core.io.computeHash
 import com.gitlab.mudlej.MjPdfReader.core.io.DocumentIdentity
 import com.gitlab.mudlej.MjPdfReader.core.io.computeTailHash
+import com.gitlab.mudlej.MjPdfReader.core.io.ensurePdfFileName
 import com.gitlab.mudlej.MjPdfReader.core.io.getFileName
 import com.gitlab.mudlej.MjPdfReader.core.io.publicDownloadsCopy
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -57,7 +60,7 @@ sealed interface SaveOutcome {
     data class Failure(
         val rescueFileName: String?,
         val unconfirmed: Boolean,
-        val overwritesSource: Boolean = false,
+        val sourceMayBeIncomplete: Boolean = false,
     ) : SaveOutcome
 }
 
@@ -81,7 +84,11 @@ class AnnotationSaveController(
 ) {
     private sealed interface WriteResult {
         data class Success(val hash: String, val identity: String, val sizeBytes: Long) : WriteResult
-        data class Failure(val rescueFileName: String?, val unconfirmed: Boolean) : WriteResult
+        data class Failure(
+            val rescueFileName: String?,
+            val unconfirmed: Boolean,
+            val destinationMayBeIncomplete: Boolean = false,
+        ) : WriteResult
     }
 
     fun saveHighlights(postSaveAction: PostSaveAction? = null, actionUri: Uri? = null) {
@@ -312,6 +319,7 @@ class AnnotationSaveController(
     }
 
     private fun saveHighlightsToUri(destinationUri: Uri, sourceUri: Uri, saveDestinationDurably: Boolean = true) {
+        val fault = AnnotationTestHooks.saveFault(activity)
         clearActiveSearchResultHighlight()
         annotationController.setSaving(true)
         updateDirtyUi()
@@ -321,9 +329,9 @@ class AnnotationSaveController(
 
         backgroundSaveScope.launch {
             var outcome: SaveOutcome =
-                SaveOutcome.Failure(rescueFileName = null, unconfirmed = false, overwritesSource = overwritesSource)
+                SaveOutcome.Failure(rescueFileName = null, unconfirmed = false, sourceMayBeIncomplete = overwritesSource)
             try {
-                val writeResult = writeDocumentToSaf(destinationUri)
+                val writeResult = writeDocumentToSaf(destinationUri, fault)
                 if (writeResult is WriteResult.Success) {
                     val destinationName = getFileName(activity, destinationUri)
                     val newHash = writeResult.identity
@@ -372,7 +380,7 @@ class AnnotationSaveController(
                     outcome = SaveOutcome.Failure(
                         writeResult.rescueFileName,
                         writeResult.unconfirmed,
-                        overwritesSource,
+                        sourceMayBeIncomplete = overwritesSource && writeResult.destinationMayBeIncomplete,
                     )
                 }
             } catch (e: CancellationException) {
@@ -439,7 +447,7 @@ class AnnotationSaveController(
         }
     }
 
-    private suspend fun writeDocumentToSaf(destinationUri: Uri): WriteResult = withContext(Dispatchers.IO) {
+    private suspend fun writeDocumentToSaf(destinationUri: Uri, fault: SaveFault): WriteResult = withContext(Dispatchers.IO) {
         val tmp = File(activity.cacheDir, "annotation-save-${System.currentTimeMillis()}.pdf")
         try {
             if (!runCatching { binding.pdfView.saveAsCopy(tmp) }.getOrDefault(false)) {
@@ -452,9 +460,9 @@ class AnnotationSaveController(
             val tailHash = computeTailHash(tmp)
                 ?: return@withContext WriteResult.Failure(rescueFileName = null, unconfirmed = false)
             if (destinationUri.scheme == "file") {
-                writeToFileDestination(destinationUri, tmp, hash, identities.identity, tailHash, sizeBytes)
+                writeToFileDestination(destinationUri, tmp, hash, identities.identity, tailHash, sizeBytes, fault)
             } else {
-                writeToContentDestination(destinationUri, tmp, hash, identities.identity, tailHash, sizeBytes)
+                writeToContentDestination(destinationUri, tmp, hash, identities.identity, tailHash, sizeBytes, fault)
             }
         } finally {
             tmp.delete()
@@ -468,6 +476,7 @@ class AnnotationSaveController(
         identity: String,
         tailHash: String,
         sizeBytes: Long,
+        fault: SaveFault,
     ): WriteResult {
         val target = destinationUri.path?.let { File(it) }
         val parent = target?.parentFile
@@ -475,14 +484,16 @@ class AnnotationSaveController(
             return failure(tmp, unconfirmed = false)
         }
         val sibling = File(parent, "${target.name}.saving")
+        AnnotationTestHooks.awaitSaveWrite(fault)
         val wrote = runCatching {
             FileOutputStream(sibling).use { output ->
-                tmp.inputStream().use { input -> input.copyTo(output) }
+                tmp.inputStream().use { input -> AnnotationTestHooks.copySaveBytes(fault, input, output) }
                 output.fd.sync()
             }
             true
         }.getOrDefault(false)
-        if (!wrote || sibling.length() != sizeBytes || computeHash(sibling) != hash ||
+        if (!wrote || AnnotationTestHooks.verificationFails(fault) ||
+            sibling.length() != sizeBytes || computeHash(sibling) != hash ||
             computeTailHash(sibling) != tailHash
         ) {
             sibling.delete()
@@ -502,21 +513,22 @@ class AnnotationSaveController(
         identity: String,
         tailHash: String,
         sizeBytes: Long,
+        fault: SaveFault,
     ): WriteResult {
-        var wrote = attemptContentWrite(destinationUri, tmp)
+        var wrote = attemptContentWrite(destinationUri, tmp, fault)
         if (wrote.isFailure) {
-            if (destinationMatches(destinationUri, hash, tailHash, sizeBytes)) {
+            if (destinationMatches(destinationUri, hash, tailHash, sizeBytes, fault)) {
                 return WriteResult.Success(hash, identity, sizeBytes)
             }
-            wrote = attemptContentWrite(destinationUri, tmp)
+            wrote = attemptContentWrite(destinationUri, tmp, fault)
         }
         if (!wrote.getOrDefault(false)) {
-            return failure(tmp, unconfirmed = false)
+            return failure(tmp, unconfirmed = false, destinationMayBeIncomplete = true)
         }
-        return if (destinationMatches(destinationUri, hash, tailHash, sizeBytes)) {
+        return if (destinationMatches(destinationUri, hash, tailHash, sizeBytes, fault)) {
             WriteResult.Success(hash, identity, sizeBytes)
         } else {
-            failure(tmp, unconfirmed = true)
+            failure(tmp, unconfirmed = true, destinationMayBeIncomplete = true)
         }
     }
 
@@ -525,7 +537,11 @@ class AnnotationSaveController(
         hash: String,
         tailHash: String,
         sizeBytes: Long,
+        fault: SaveFault,
     ): Boolean {
+        if (AnnotationTestHooks.verificationFails(fault)) {
+            return false
+        }
         if (!destinationSizeMatches(destinationUri, sizeBytes)) {
             return false
         }
@@ -535,10 +551,13 @@ class AnnotationSaveController(
         return runCatching { computeTailHash(activity, destinationUri) }.getOrNull() == tailHash
     }
 
-    private fun attemptContentWrite(destinationUri: Uri, tmp: File): Result<Boolean> = runCatching {
-        activity.contentResolver.openOutputStream(destinationUri, "wt")?.use { output ->
-            tmp.inputStream().use { input -> input.copyTo(output) }
-        } != null
+    private fun attemptContentWrite(destinationUri: Uri, tmp: File, fault: SaveFault): Result<Boolean> {
+        AnnotationTestHooks.awaitSaveWrite(fault)
+        return runCatching {
+            activity.contentResolver.openOutputStream(destinationUri, "wt")?.use { output ->
+                tmp.inputStream().use { input -> AnnotationTestHooks.copySaveBytes(fault, input, output) }
+            } != null
+        }
     }
 
     private fun destinationSizeMatches(destinationUri: Uri, expected: Long): Boolean {
@@ -548,14 +567,18 @@ class AnnotationSaveController(
         return size < 0 || size == expected
     }
 
-    private fun failure(tmp: File, unconfirmed: Boolean): WriteResult.Failure {
+    private fun failure(
+        tmp: File,
+        unconfirmed: Boolean,
+        destinationMayBeIncomplete: Boolean = false,
+    ): WriteResult.Failure {
         val rescueFileName = if (!vm.incognito) writeRescueCopy(tmp) else null
-        return WriteResult.Failure(rescueFileName = rescueFileName, unconfirmed = unconfirmed)
+        return WriteResult.Failure(rescueFileName, unconfirmed, destinationMayBeIncomplete)
     }
 
     private fun writeRescueCopy(tmp: File): String? = runCatching {
         val dir = File(activity.filesDir, RESCUE_DIR).apply { mkdirs() }
-        val displayName = suggestedAnnotatedFileName()
+        val displayName = ensurePdfFileName(suggestedAnnotatedFileName())
         val rescue = File(dir, "${System.currentTimeMillis()}-$displayName")
         tmp.inputStream().use { input ->
             FileOutputStream(rescue).use { output ->
@@ -574,7 +597,7 @@ class AnnotationSaveController(
         val titleRes: Int
         val message: CharSequence
         when {
-            outcome.overwritesSource -> {
+            outcome.sourceMayBeIncomplete -> {
                 titleRes = R.string.annotation_save_incomplete_title
                 message = if (outcome.rescueFileName != null) {
                     activity.getString(R.string.annotation_save_incomplete_rescue_message, outcome.rescueFileName)

@@ -21,6 +21,7 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
     var currentLoadToken = 0L
         private set
     var pendingViewState: PDFView.ViewState? = null
+    var revalidateDocumentOnLoad = false
     var cropMarginsEnabled = false
 
     private var positionPersistSuppressed = false
@@ -41,6 +42,8 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
     var annotationSaveDestinationUri: Uri? = null
     var annotationSaveDestinationDurable = false
     var hasUnsavedAnnotations = false
+    var hasRecoverableUnsavedAnnotations = false
+    var hasUnrecoverableUnsavedAnnotations = false
     var isSavingAnnotations = false
     val sessionOwnedAnnotationKeys = mutableSetOf<String>()
     var onSaveComplete: ((SaveOutcome) -> Unit)? = null
@@ -100,6 +103,7 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
 
     fun beginNewDocument(uri: Uri, cropMarginsDefault: Boolean) {
         currentLoadToken++
+        revalidateDocumentOnLoad = false
         doc.uri = uri
         doc.fileHash = null
         doc.pageNumber = 0
@@ -107,6 +111,7 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
         doc.pageRangeStart = 0
         doc.pageRangeEnd = 0
         doc.autoScrollSpeed = null
+        doc.readingDirectionResolved = false
         doc.readingDirectionOverride = null
         doc.detectedReadingDirection = null
         doc.effectiveReadingDirection = ReadingDirection.LEFT_TO_RIGHT
@@ -126,6 +131,8 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
         annotationSaveDestinationUri = null
         annotationSaveDestinationDurable = false
         hasUnsavedAnnotations = false
+        hasRecoverableUnsavedAnnotations = false
+        hasUnrecoverableUnsavedAnnotations = false
         isSavingAnnotations = false
     }
 
@@ -137,8 +144,10 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
         val out = Bundle()
         out.putParcelable(PDF.uriKey, doc.uri)
         out.putString(PDF.fileHashKey, doc.fileHash)
+        out.putBoolean(KEY_REVALIDATE_DOCUMENT, revalidateDocumentOnLoad)
         out.putInt(PDF.pageNumberKey, doc.pageNumber)
         out.putString(PDF.passwordKey, doc.password)
+        out.putBoolean(KEY_READING_DIRECTION_RESOLVED, doc.readingDirectionResolved)
         out.putString(PDF.readingDirectionOverrideKey, doc.readingDirectionOverride?.id)
         out.putString(PDF.detectedReadingDirectionKey, doc.detectedReadingDirection?.id)
         out.putString(PDF.effectiveReadingDirectionKey, doc.effectiveReadingDirection.id)
@@ -157,8 +166,10 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
             out.putInt(PDF.viewStatePagesPerRowKey, viewState.pagesPerRow)
             out.putBoolean(PDF.viewStateFirstPageAloneKey, viewState.firstPageAlone)
         }
-        out.putBoolean(PDF.hasUnsavedAnnotationsKey, hasUnsavedAnnotations)
-        out.putStringArrayList(PDF.sessionOwnedAnnotationKeysKey, ArrayList(sessionOwnedAnnotationKeys))
+        if (hasRecoverableUnsavedAnnotations) {
+            out.putBoolean(PDF.hasUnsavedAnnotationsKey, hasUnsavedAnnotations)
+            out.putStringArrayList(PDF.sessionOwnedAnnotationKeysKey, ArrayList(sessionOwnedAnnotationKeys))
+        }
         out.putParcelable(KEY_LOADED_ANNOTATION_URI, loadedAnnotationDocumentUri)
         val signatureRect = pendingSignatureRect
         if (signatureRect != null && pendingSignaturePage >= 0) {
@@ -186,8 +197,10 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
     private fun restoreState(saved: Bundle) {
         doc.uri = saved.getParcelable(PDF.uriKey)
         doc.fileHash = saved.getString(PDF.fileHashKey)
+        revalidateDocumentOnLoad = saved.getBoolean(KEY_REVALIDATE_DOCUMENT, false)
         doc.pageNumber = saved.getInt(PDF.pageNumberKey)
         doc.password = saved.getString(PDF.passwordKey)
+        doc.readingDirectionResolved = saved.getBoolean(KEY_READING_DIRECTION_RESOLVED, false)
         doc.readingDirectionOverride = ReadingDirection.fromOverrideId(
             saved.getString(PDF.readingDirectionOverrideKey),
         )
@@ -216,6 +229,7 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
         saved.getStringArrayList(PDF.sessionOwnedAnnotationKeysKey)?.let(sessionOwnedAnnotationKeys::addAll)
         if (saved.getBoolean(PDF.hasUnsavedAnnotationsKey, false)) {
             hasUnsavedAnnotations = true
+            hasRecoverableUnsavedAnnotations = true
             doc.uri?.let { sessionOwnedAnnotationKeys.add(SourceKey.of(it)) }
         }
         if (saved.getBoolean(KEY_SIGNATURE_PENDING, false)) {
@@ -242,6 +256,8 @@ class ReaderViewModel(state: SavedStateHandle) : ViewModel() {
     }
 
     private companion object {
+        const val KEY_READING_DIRECTION_RESOLVED = "readingDirectionResolved"
+        const val KEY_REVALIDATE_DOCUMENT = "revalidateDocumentOnLoad"
         const val STATE_KEY = "readerViewModelState"
         const val KEY_LOADED_ANNOTATION_URI = "loadedAnnotationDocumentUri"
         const val KEY_SIGNATURE_PENDING = "signaturePlacementPending"

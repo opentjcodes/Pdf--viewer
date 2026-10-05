@@ -21,6 +21,7 @@ import android.widget.FrameLayout
 import androidx.constraintlayout.widget.ConstraintLayout
 import com.github.barteksc.pdfviewer.PDFView
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.AnnotationTestHooks
 import com.gitlab.mudlej.MjPdfReader.core.io.browserLinkIntent
 import com.gitlab.mudlej.MjPdfReader.core.io.linkIntent
 import com.gitlab.mudlej.MjPdfReader.core.io.pdfDateNow
@@ -32,6 +33,7 @@ import com.gitlab.mudlej.MjPdfReader.databinding.ActivityMainBinding
 import com.gitlab.mudlej.MjPdfReader.core.ui.AppSnackbar
 import com.gitlab.mudlej.MjPdfReader.core.ui.confirmDialog
 import com.gitlab.mudlej.MjPdfReader.core.ui.copyToClipboard
+import com.gitlab.mudlej.MjPdfReader.core.ui.openDocumentLink
 import com.gitlab.mudlej.MjPdfReader.ui.reader.share.showShareQuoteDialog
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.color.MaterialColors
@@ -229,13 +231,7 @@ class InlineAnnotationActionController(
     }
 
     private fun openLink(url: String): Boolean {
-        return try {
-            activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-            true
-        } catch (e: ActivityNotFoundException) {
-            AppSnackbar.make(binding.root, activity.getString(R.string.no_app_to_open_link), Snackbar.LENGTH_LONG).show()
-            false
-        }
+        return openDocumentLink(binding.root, url)
     }
 
     private fun dismissCard() {
@@ -262,7 +258,9 @@ class InlineAnnotationActionController(
         if (!canEditDocument()) {
             return
         }
-        if (request == null || !binding.pdfView.addHighlight(request, color, groupKey, createdDate)) {
+        if (request == null || AnnotationTestHooks.consumeHighlightWriteFailure() ||
+            !binding.pdfView.addHighlight(request, color, groupKey, createdDate)
+        ) {
             AppSnackbar.make(binding.root, R.string.highlight_failed, Snackbar.LENGTH_SHORT).show()
             return
         }
@@ -361,7 +359,9 @@ class InlineAnnotationActionController(
         if (!canEditDocument()) {
             return
         }
-        if (request == null || !binding.pdfView.addHighlight(request, color, groupKey, createdDate)) {
+        if (request == null || AnnotationTestHooks.consumeHighlightWriteFailure() ||
+            !binding.pdfView.addHighlight(request, color, groupKey, createdDate)
+        ) {
             AppSnackbar.make(binding.root, R.string.highlight_failed, Snackbar.LENGTH_SHORT).show()
             return
         }

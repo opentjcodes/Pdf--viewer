@@ -19,6 +19,7 @@ class DocumentState(
     var length: Int = 0,
     var autoScrollSpeed: Int? = null,
     var fileHash: String? = null,
+    var readingDirectionResolved: Boolean = false,
     var readingDirectionOverride: ReadingDirection? = null,
     var detectedReadingDirection: ReadingDirection? = null,
     var effectiveReadingDirection: ReadingDirection = ReadingDirection.LEFT_TO_RIGHT,

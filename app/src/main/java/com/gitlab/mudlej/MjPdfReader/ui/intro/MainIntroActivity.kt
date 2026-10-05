@@ -8,6 +8,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.viewpager2.widget.ViewPager2
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
 import com.gitlab.mudlej.MjPdfReader.core.ui.setupScreenChrome
 import com.gitlab.mudlej.MjPdfReader.databinding.ActivityIntroBinding
@@ -109,5 +110,16 @@ class MainIntroActivity : AppCompatActivity() {
         val isLastPage = position == pages.lastIndex
         binding.skipButton.visibility = if (isLastPage) View.INVISIBLE else View.VISIBLE
         binding.nextButton.setText(if (isLastPage) R.string.intro_get_started else R.string.intro_next)
+        updateDebugDescriptions(position)
+    }
+
+    private fun updateDebugDescriptions(position: Int) {
+        if (!BuildConfig.DEBUG) {
+            return
+        }
+        binding.introPager.contentDescription = "intro-page:$position:${pages.size}"
+        dots.forEachIndexed { index, dot ->
+            dot.contentDescription = if (index == position) "intro-dot-active" else "intro-dot-inactive"
+        }
     }
 }

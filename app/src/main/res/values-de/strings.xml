@@ -546,7 +546,6 @@
     <string name="dracula">Dracula</string>
     <string name="text_size">Textgröße</string>
     <string name="go_to_page">Gehe zu Seite</string>
-    <string name="no_input">Keine Eingabe!</string>
     <string name="go_to">Gehe zu</string>
     <string name="all_pages">Alle Seiten</string>
     <string name="grid_columns">Spalten</string>
@@ -662,6 +661,7 @@
     <string name="home_scan_locations_save">Speichern</string>
     <string name="home_scan_locations_up">Nach oben</string>
     <string name="home_menu_scan_locations">Scan-Orte</string>
+    <string name="home_menu_full_rescan">Vollständig neu scannen</string>
     <string name="home_search_hint">Ihre Bibliothek durchsuchen</string>
     <string name="home_tab_recent">Zuletzt</string>
     <string name="home_tab_library">Bibliothek</string>
@@ -683,7 +683,9 @@
     <string name="home_chip_abandoned">Abgebrochen</string>
     <string name="home_chip_all_files">Alle Dateien</string>
     <string name="home_hero_progress_template">%1$d%% · %2$d/%3$d</string>
-    <string name="home_scanning_progress">Suche läuft… %1$d PDFs gefunden</string>
+    <string name="home_scan_finding">PDFs werden gesucht… %1$d gefunden</string>
+    <string name="home_scan_reading_details">PDF-Details werden gelesen… %1$d von %2$d</string>
+    <string name="home_scan_incomplete">Scan unvollständig… %1$d PDFs gefunden</string>
     <string name="home_menu_title">Bibliotheksmenü</string>
     <string name="home_menu_view">Ansicht</string>
     <string name="home_menu_stats">Bibliotheksstatistik</string>
@@ -888,7 +890,7 @@
     <string name="auto_backup_failure_notice">Die letzte automatische Sicherung ist fehlgeschlagen.</string>
     <string name="auto_backup_stale_notice">Die automatische Sicherung wurde seit mehr als einem Tag nicht ausgeführt.</string>
     <string name="auto_backup_notice_action">Sicherungseinstellungen</string>
-    <string name="home_recent_permission_message">Ihre Bücher benötigen Dateizugriff, um wieder geöffnet zu werden. Erlauben Sie den Zugriff, um sie freizuschalten.</string>
+    <string name="home_recent_permission_message">Einige kürzlich verwendete Dokumente können ohne Dateizugriff nicht überprüft werden. Erlauben Sie den Zugriff, damit MJ PDF sie überprüfen und öffnen kann, falls sie noch verfügbar sind.</string>
     <string name="home_list_badges_title">Badges der Listenkarten</string>
     <string name="home_list_badges_summary">Wählen Sie, welche Details unter den Dateinamen in der Listenansicht angezeigt werden.</string>
     <string name="home_badge_pages">Seitenanzahl</string>

@@ -68,6 +68,11 @@ class LibraryAdapter(
             ListViewHolder(ItemHomeListRowBinding.inflate(inflater, parent, false))
         }
     }
+    override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
+        super.onAttachedToRecyclerView(recyclerView)
+        recyclerView.itemAnimator = null
+    }
+
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         val item = getItem(position)
@@ -82,7 +87,7 @@ class LibraryAdapter(
         position: Int,
         payloads: MutableList<Any>,
     ) {
-        if (payloads.contains(SELECTION_PAYLOAD)) {
+        if (payloads.isNotEmpty() && payloads.all { it == SELECTION_PAYLOAD }) {
             val item = getItem(position)
             when (holder) {
                 is GridViewHolder -> holder.applySelection(item)
@@ -97,14 +102,13 @@ class LibraryAdapter(
         notifyItemRangeChanged(0, itemCount, SELECTION_PAYLOAD)
     }
 
-    private fun isSelected(item: HomeItem) = item.hash in selection()
+    private fun isSelected(item: HomeItem) = item.stableKey in selection()
 
     inner class GridViewHolder(
         private val binding: ItemHomeGridCellBinding,
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(item: HomeItem) {
-            binding.root.alpha = if (item.available) 1f else UNAVAILABLE_ALPHA
             binding.title.text = item.title
             binding.title.applyTitleLines(pref.getHomeGridTitleLines())
 
@@ -137,6 +141,7 @@ class LibraryAdapter(
         }
 
         fun applySelection(item: HomeItem) {
+            binding.root.alpha = if (item.available) 1f else UNAVAILABLE_ALPHA
             binding.coverCard.isChecked = isSelected(item)
         }
     }
@@ -146,7 +151,6 @@ class LibraryAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(item: HomeItem) {
-            binding.root.alpha = if (item.available) 1f else UNAVAILABLE_ALPHA
             binding.title.text = item.title
             binding.title.applyTitleLines(pref.getHomeListTitleLines())
             bindMetaBadges(item)
@@ -160,6 +164,7 @@ class LibraryAdapter(
         }
 
         fun applySelection(item: HomeItem) {
+            binding.root.alpha = if (item.available) 1f else UNAVAILABLE_ALPHA
             binding.listCard.isChecked = isSelected(item)
         }
 
@@ -231,7 +236,7 @@ class LibraryAdapter(
 class HomeItemComparator : DiffUtil.ItemCallback<HomeItem>() {
 
     override fun areItemsTheSame(oldItem: HomeItem, newItem: HomeItem): Boolean {
-        return oldItem.hash == newItem.hash
+        return oldItem.stableKey == newItem.stableKey
     }
 
     override fun areContentsTheSame(oldItem: HomeItem, newItem: HomeItem): Boolean {

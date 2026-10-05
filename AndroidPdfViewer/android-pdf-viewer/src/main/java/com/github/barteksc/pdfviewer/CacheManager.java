@@ -45,6 +45,15 @@ class CacheManager {
 
     private volatile boolean scaling = false;
 
+    private boolean debugPartPeakTracking;
+    private long debugPartPeakObservationId;
+    private int debugPartPeakActive;
+    private int debugPartPeakPassive;
+    private int debugPartPeakActiveTiles;
+    private int debugPartPeakPassiveTiles;
+    private int debugPartPeakTotal;
+    private int debugPartPeakScalingInsertions;
+
     public CacheManager() {
         activeCache = new PriorityQueue<>(CACHE_SIZE, orderComparator);
         passiveCache = new PriorityQueue<>(CACHE_SIZE, orderComparator);
@@ -64,6 +73,7 @@ class CacheManager {
 
             // Then add part
             activeCache.offer(part);
+            recordDebugPartPeak();
         }
     }
 
@@ -167,6 +177,83 @@ class CacheManager {
         this.scaling = scaling;
     }
 
+    long[] debugPartStats() {
+        synchronized (passiveActiveLock) {
+            return new long[]{
+                    activeCache.size(),
+                    passiveCache.size(),
+                    debugPartBytes(activeCache),
+                    debugPartBytes(passiveCache),
+                    scaling ? 1 : 0
+            };
+        }
+    }
+
+    long debugResetPartPeak() {
+        synchronized (passiveActiveLock) {
+            debugPartPeakObservationId++;
+            debugPartPeakActive = 0;
+            debugPartPeakPassive = 0;
+            debugPartPeakActiveTiles = 0;
+            debugPartPeakPassiveTiles = 0;
+            debugPartPeakTotal = 0;
+            debugPartPeakScalingInsertions = 0;
+            debugPartPeakTracking = true;
+            return debugPartPeakObservationId;
+        }
+    }
+
+    long[] debugPartPeakStats() {
+        synchronized (passiveActiveLock) {
+            return new long[]{
+                    debugPartPeakObservationId,
+                    debugPartPeakActive,
+                    debugPartPeakPassive,
+                    debugPartPeakActiveTiles,
+                    debugPartPeakPassiveTiles,
+                    debugPartPeakTotal,
+                    debugPartPeakScalingInsertions
+            };
+        }
+    }
+
+    private void recordDebugPartPeak() {
+        if (!debugPartPeakTracking || !scaling) {
+            return;
+        }
+        debugPartPeakScalingInsertions++;
+        int total = activeCache.size() + passiveCache.size();
+        if (total <= debugPartPeakTotal) {
+            return;
+        }
+        debugPartPeakActive = activeCache.size();
+        debugPartPeakPassive = passiveCache.size();
+        debugPartPeakActiveTiles = debugTileCount(activeCache);
+        debugPartPeakPassiveTiles = debugTileCount(passiveCache);
+        debugPartPeakTotal = total;
+    }
+
+    private static int debugTileCount(Collection<PagePart> parts) {
+        int count = 0;
+        for (PagePart part : parts) {
+            if (!part.isSnapshot()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static long debugPartBytes(Collection<PagePart> parts) {
+        long bytes = 0;
+        for (PagePart part : parts) {
+            Bitmap bitmap = part.getRenderedBitmap();
+            if (bitmap != null) {
+                bytes += bitmap.getByteCount();
+            }
+        }
+        return bytes;
+    }
+
     private void makeAFreeSpace() {
         synchronized (passiveActiveLock) {
             int limit = scaling ? CACHE_SIZE * 4 : CACHE_SIZE;
@@ -215,6 +302,14 @@ class CacheManager {
             }
         }
         return null;
+    }
+
+    @Nullable
+    PagePart debugActivePart(int page, RectF pageRelativeBounds) {
+        PagePart probe = new PagePart(page, null, pageRelativeBounds, 0);
+        synchronized (passiveActiveLock) {
+            return find(activeCache, probe);
+        }
     }
 
     public List<PagePart> getPageParts() {

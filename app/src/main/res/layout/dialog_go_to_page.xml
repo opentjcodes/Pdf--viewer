@@ -19,7 +19,7 @@
             android:id="@+id/editText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:digits="0123456789"
+            android:digits="0123456789٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹"
             android:gravity="center_vertical"
             android:inputType="number"
             android:maxLength="4" />

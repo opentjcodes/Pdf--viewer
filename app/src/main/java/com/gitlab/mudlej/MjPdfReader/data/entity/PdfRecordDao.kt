@@ -8,6 +8,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import java.time.LocalDateTime
+import kotlinx.coroutines.flow.Flow
 
 data class TextModeReflowOverride(
     val textModeJoinParagraphs: Boolean?,
@@ -20,6 +21,9 @@ interface PdfRecordDao {
 
     @Query("SELECT * FROM PdfRecord")
     fun findAll(): List<PdfRecord>
+
+    @Query("SELECT * FROM PdfRecord")
+    fun observeAll(): Flow<List<PdfRecord>>
 
     @Query("SELECT * FROM PdfRecord WHERE hash = :fileHash LIMIT 1")
     fun findByHash(fileHash: String): PdfRecord?
@@ -59,6 +63,18 @@ interface PdfRecordDao {
 
     @Query("UPDATE PdfRecord SET uri = :uri, fileName = :fileName, lastOpened = :lastOpened WHERE hash = :fileHash")
     fun updateIdentity(fileHash: String, uri: android.net.Uri, fileName: String, lastOpened: LocalDateTime): Int
+
+    @Query("""
+        UPDATE PdfRecord SET uri = :uri, fileName = :fileName
+        WHERE hash = :fileHash AND uri = :previousUri AND sourceUri IS :previousSourceUri
+    """)
+    fun repairIdentity(
+        fileHash: String,
+        previousUri: android.net.Uri,
+        previousSourceUri: String?,
+        uri: android.net.Uri,
+        fileName: String,
+    ): Int
 
     @Query("UPDATE OR REPLACE PdfRecord SET hash = :newHash WHERE hash = :oldHash")
     fun rekey(oldHash: String, newHash: String): Int

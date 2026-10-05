@@ -23,6 +23,7 @@ import com.shockwave.pdfium.PdfDocument;
 import com.shockwave.pdfium.PdfiumCore;
 
 import java.io.IOException;
+import java.io.File;
 
 public class UriSource implements DocumentSource {
 
@@ -34,7 +35,14 @@ public class UriSource implements DocumentSource {
 
     @Override
     public PdfDocument createDocument(Context context, PdfiumCore core, String password) throws IOException {
-        ParcelFileDescriptor pfd = context.getContentResolver().openFileDescriptor(uri, "r");
+        ParcelFileDescriptor pfd = openReadDescriptor(context, uri);
         return core.newDocument(pfd, password);
+    }
+
+    public static ParcelFileDescriptor openReadDescriptor(Context context, Uri uri) throws IOException {
+        if ("file".equals(uri.getScheme()) && uri.getPath() != null) {
+            return FileSource.openReadDescriptor(context, new File(uri.getPath()));
+        }
+        return context.getContentResolver().openFileDescriptor(uri, "r");
     }
 }

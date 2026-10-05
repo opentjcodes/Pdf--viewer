@@ -43,4 +43,54 @@ object AppDatabaseMigrations {
             db.execSQL("UPDATE `UserBookmark` SET `sortOrder` = `pageIndex` WHERE `sortOrder` < 0")
         }
     }
+
+    val MIGRATION_14_TO_15 = object : Migration(14, 15) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            addMetadataColumns(db)
+            migrateCachedMetadata(db)
+            createMetadataStateIndex(db)
+        }
+
+        private fun addMetadataColumns(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE `ScannedPdfCache` ADD COLUMN `metadataState` TEXT NOT NULL DEFAULT 'PENDING'"
+            )
+            db.execSQL(
+                "ALTER TABLE `ScannedPdfCache` ADD COLUMN `metadataFailure` TEXT"
+            )
+            db.execSQL(
+                "ALTER TABLE `ScannedPdfCache` ADD COLUMN `metadataWorkerDeaths` INTEGER NOT NULL DEFAULT 0"
+            )
+        }
+
+        private fun migrateCachedMetadata(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                UPDATE `ScannedPdfCache`
+                SET `lastModified` = (`lastModified` / 1000) * 1000
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                UPDATE `ScannedPdfCache`
+                SET `metadataState` = 'COMPLETE'
+                WHERE `pageCount` > 0 AND `hash` LIKE 'h2%'
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                UPDATE `ScannedPdfCache`
+                SET `pageCount` = 0
+                WHERE `metadataState` = 'PENDING'
+                """.trimIndent()
+            )
+        }
+
+        private fun createMetadataStateIndex(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_ScannedPdfCache_metadataState` " +
+                    "ON `ScannedPdfCache` (`metadataState`)"
+            )
+        }
+    }
 }

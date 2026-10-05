@@ -25,6 +25,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
+import androidx.annotation.MainThread
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
@@ -32,7 +33,10 @@ import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceManager
 import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
+import com.github.barteksc.pdfviewer.PDFView
+import com.gitlab.mudlej.MjPdfReader.core.debug.DebugRootDescription
 import com.gitlab.mudlej.MjPdfReader.core.debug.MainThreadStallWatchdog
+import com.gitlab.mudlej.MjPdfReader.core.debug.ReaderDebugStateSource
 import com.gitlab.mudlej.MjPdfReader.core.ui.confirmDialog
 import com.gitlab.mudlej.MjPdfReader.data.*
 import com.gitlab.mudlej.MjPdfReader.databinding.ActivityMainBinding
@@ -51,7 +55,9 @@ import com.gitlab.mudlej.MjPdfReader.core.ui.clearIncognitoNightMode
 import com.gitlab.mudlej.MjPdfReader.core.ui.showOptionalIcons
 import com.gitlab.mudlej.MjPdfReader.pdf.PDF
 import com.gitlab.mudlej.MjPdfReader.pdf.PdfPropertiesSummary
+import com.gitlab.mudlej.MjPdfReader.ui.reader.annotation.ReaderAnnotationDebug
 import com.gitlab.mudlej.MjPdfReader.ui.reader.load.DocumentUnreachableException
+import com.gitlab.mudlej.MjPdfReader.ui.reader.load.LoadState
 import com.gitlab.mudlej.MjPdfReader.ui.settings.SettingsActivity
 import com.gitlab.mudlej.MjPdfReader.ui.settings.SettingsPage
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -83,7 +89,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
     private var doubleBackToExitPressedOnce = false
     private var savingProgressVisible = false
     private var taskDescriptionName: String? = null
-    private val stallWatchdog by lazy { MainThreadStallWatchdog() }
+    private val stallWatchdog by lazy { MainThreadStallWatchdog(activityOwned = true) }
 
     private val annotationController get() = reader.annotationController
     private val annotationSaveController get() = reader.annotationSaveController
@@ -131,6 +137,10 @@ class MainActivity : AppCompatActivity(), ReaderUi {
             clearIncognitoNightMode()
         }
         super.onCreate(savedInstanceState)
+        if (BuildConfig.DEBUG && intent.getBooleanExtra(DEBUG_PROCESS_BOOTSTRAP_EXTRA, false)) {
+            finishAndRemoveTask()
+            return
+        }
         if (incognito) {
             applyIncognitoOverlay()
         }
@@ -149,6 +159,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
         StrictMode.setVmPolicy(StrictMode.VmPolicy.Builder().build())
 
         reader = ReaderComposition(this, binding, vm, pref)
+        installReaderDebugState()
         documentLoader.applyTileRenderingPreferences()
 
         openInitialDocument(savedInstanceState)
@@ -156,9 +167,32 @@ class MainActivity : AppCompatActivity(), ReaderUi {
         overrideOnBackButtonPressed()
     }
 
+    private fun installReaderDebugState() {
+        if (!BuildConfig.DEBUG) {
+            return
+        }
+        PDFView.enableDebugState(true)
+        binding.pdfView.attachDebugStateSource(
+            ReaderDebugStateSource(vm, documentLoader, readerHistory),
+        )
+        DebugRootDescription.attachLayoutDirection(binding.root)
+        reader.publishDebugHistory()
+    }
+
+    @MainThread
+    fun annotationDebug(): ReaderAnnotationDebug? {
+        if (!BuildConfig.DEBUG || !::binding.isInitialized || isDestroyed) {
+            return null
+        }
+        return ReaderAnnotationDebug(binding.pdfView, vm, this, annotationController)
+    }
+
     private fun openInitialDocument(savedInstanceState: Bundle?) {
+        var pendingCleartextUri: Uri? = null
         if (savedInstanceState != null) {
             restoreInstanceState(savedInstanceState)
+            pendingCleartextUri = externalIntentUri()
+                ?.takeIf { it.isCleartextHttp() && !isDisplayingUri(it.toString()) }
         }
         else {
             val intentUri = intent.data
@@ -175,15 +209,29 @@ class MainActivity : AppCompatActivity(), ReaderUi {
                     reader.pickFile()
                 }
             } else {
-                documentLoader.prepareNewDocument(intentUri)
+                openExternalUri(intentUri)
+                return
             }
         }
 
         displayFromUri(pdf.uri, true)
+        pendingCleartextUri?.let(::openExternalUri)
     }
 
     private fun openSharedTextLink(): Boolean {
-        val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return false
+        val link = sharedTextLink() ?: return false
+        openExternalUri(link)
+        return true
+    }
+
+    private fun externalIntentUri(): Uri? = if (intent.action == Intent.ACTION_SEND) {
+        sharedTextLink()
+    } else {
+        intent.data
+    }
+
+    private fun sharedTextLink(): Uri? {
+        val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return null
         val trimChars = charArrayOf(
             '<', '>', '(', ')', '[', ']', '{', '}', '"', '\'', '.', ',', ';', ':', '!', '?',
         )
@@ -194,9 +242,8 @@ class MainActivity : AppCompatActivity(), ReaderUi {
                 (token.startsWith("http://", ignoreCase = true)
                         || token.startsWith("https://", ignoreCase = true))
                         && Patterns.WEB_URL.matcher(token).matches()
-            } ?: return false
-        displayFromUri(Uri.parse(link), true)
-        return true
+            } ?: return null
+        return Uri.parse(link)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -209,7 +256,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
             }
         } else if (newUri != null) {
             if (!isDisplayingUri(newUri.toString())) {
-                runAfterDirtyAnnotationPrompt(PostSaveAction.DISPLAY_URI, newUri)
+                openExternalUri(newUri)
             }
         } else if (intent.getBooleanExtra(HomeActivity.EXTRA_OPEN_ONLINE_DIALOG, false)) {
             intent.removeExtra(HomeActivity.EXTRA_OPEN_ONLINE_DIALOG)
@@ -220,6 +267,29 @@ class MainActivity : AppCompatActivity(), ReaderUi {
     fun isDisplayingUri(uri: String): Boolean {
         return pdf.uri?.toString() == uri
     }
+
+    private fun openExternalUri(uri: Uri) {
+        if (uri.isCleartextHttp()) {
+            onlinePdfController.showOpenOnlinePdfDialog(
+                initialUri = uri,
+                onCancel = { clearPendingExternalUri(uri) },
+                onConfirmed = { clearPendingExternalUri(uri) },
+            )
+        } else {
+            runAfterDirtyAnnotationPrompt(PostSaveAction.DISPLAY_URI, uri)
+        }
+    }
+
+    private fun clearPendingExternalUri(uri: Uri) {
+        if (externalIntentUri() != uri) return
+        if (intent.action == Intent.ACTION_SEND) {
+            intent.removeExtra(Intent.EXTRA_TEXT)
+        } else {
+            intent.data = null
+        }
+    }
+
+    private fun Uri.isCleartextHttp(): Boolean = scheme.equals("http", ignoreCase = true)
 
     private fun setCustomActionBar() {
         val actionBar = supportActionBar
@@ -329,6 +399,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
 
     fun displayFromUri(uri: Uri?, savePassword: Boolean = false) {
         documentLoader.displayFromUri(uri, savePassword)
+        updatePickFileButtonVisibility()
         if (uri != null) {
             closeOtherReaderWindows()
         }
@@ -466,11 +537,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
     }
 
     private fun canControlOrientation(): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInMultiWindowMode) {
-            return false
-        }
-        val largeScreen = resources.configuration.smallestScreenWidthDp >= LARGE_SCREEN_SW_DP
-        return !(largeScreen && Build.VERSION.SDK_INT >= ORIENTATION_REQUEST_IGNORED_SDK)
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !isInMultiWindowMode
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -498,14 +565,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
         updateHomeUpIndicator()
         reader.onResume()
 
-        // check if there is a pdf at first
-
-        if (pdf.uri != null) {
-            binding.pickFileButton.visibility = View.GONE
-        }
-        else {
-            binding.pickFileButton.visibility = View.VISIBLE
-        }
+        updatePickFileButtonVisibility()
 
         // restore the full screen mode if was toggled On
         fullscreenController.restoreFullScreenIfNeeded()
@@ -516,6 +576,14 @@ class MainActivity : AppCompatActivity(), ReaderUi {
 
         if (BuildConfig.DEBUG) {
             stallWatchdog.start()
+        }
+    }
+
+    private fun updatePickFileButtonVisibility() {
+        binding.pickFileButton.visibility = if (pdf.uri == null || documentLoader.state is LoadState.Failed) {
+            View.VISIBLE
+        } else {
+            View.GONE
         }
     }
 
@@ -581,7 +649,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
         super.onPause()
     }
 
-    internal fun shareFile(uri: Uri?, asImage: Boolean = false) {
+    internal fun shareFile(uri: Uri?) {
         if (uri == null) {
             checkHasFile()  // only to show the message
             return
@@ -596,14 +664,18 @@ class MainActivity : AppCompatActivity(), ReaderUi {
             }
             return
         }
-        if (asImage) {
-            startShareIntent(imageShareIntent(getString(R.string.share_file), pdf.name, uri))
-            return
-        }
 
         lifecycleScope.launch {
             startShareIntent(pdfShareIntent(this@MainActivity, uri, pdf.name))
         }
+    }
+
+    internal fun shareImage(uri: Uri?, displayName: String) {
+        if (uri == null) {
+            checkHasFile()
+            return
+        }
+        startShareIntent(imageShareIntent(getString(R.string.share_file), displayName, uri))
     }
 
     private fun showShareChoiceDialog(localCopy: File) {
@@ -664,6 +736,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
             reader.startStaleDocumentRecovery(pdf.uri ?: return)
         }
         else {
+            updatePickFileButtonVisibility()
             AppSnackbar.make(binding.root, R.string.file_opening_error, Snackbar.LENGTH_LONG).show()
             Log.e(TAG, getString(R.string.file_opening_error), exception)
         }
@@ -732,6 +805,7 @@ class MainActivity : AppCompatActivity(), ReaderUi {
 
     internal fun reloadPdf() {
         if (checkHasFile()) {
+            vm.revalidateDocumentOnLoad = true
             recreate()
         }
     }
@@ -780,10 +854,19 @@ class MainActivity : AppCompatActivity(), ReaderUi {
         super.onDestroy()
     }
 
+    override fun showProgress() {
+        binding.progressBar.isIndeterminate = true
+        binding.progressBar.visibility = View.VISIBLE
+    }
+
     override fun hideProgress() {
         binding.progressBar.visibility = View.GONE
         binding.progressBar.isIndeterminate = true
         binding.progressBar.progress = 0
+    }
+
+    companion object {
+        const val DEBUG_PROCESS_BOOTSTRAP_EXTRA = "mjpdf.debug.bootstrap_process"
     }
 
     private fun askForPdfPassword() {
@@ -933,6 +1016,3 @@ class MainActivity : AppCompatActivity(), ReaderUi {
     }
 
 }
-
-private const val LARGE_SCREEN_SW_DP = 600
-private const val ORIENTATION_REQUEST_IGNORED_SDK = 36

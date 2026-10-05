@@ -112,6 +112,14 @@ class RenderScheduler {
         queue.endWave();
     }
 
+    boolean debugWaveOpen() {
+        return queue.debugWaveOpen();
+    }
+
+    int debugPendingTiles() {
+        return queue.debugPendingTiles();
+    }
+
     void submit(RenderTask task) {
         queue.submit(task);
     }

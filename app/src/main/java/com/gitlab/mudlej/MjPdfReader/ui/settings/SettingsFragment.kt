@@ -11,6 +11,8 @@ import android.provider.DocumentsContract
 import android.text.format.Formatter
 import android.widget.FrameLayout
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
 import androidx.preference.PreferenceCategory
@@ -18,7 +20,10 @@ import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceGroup
 import androidx.preference.PreferenceScreen
 import android.widget.Toast
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.BackupDebugHooks
+import com.gitlab.mudlej.MjPdfReader.core.ui.toast
 import com.gitlab.mudlej.MjPdfReader.data.Preferences
 import com.gitlab.mudlej.MjPdfReader.data.ReadingLayout
 import com.gitlab.mudlej.MjPdfReader.data.resolveReadingLayout
@@ -140,6 +145,12 @@ class SettingsFragment : PreferenceFragmentCompat() {
         outState.putBoolean(STATE_EXPORT_PENDING, pendingExportToFolder)
         outState.putBoolean(STATE_AUTO_BACKUP_PENDING, pendingAutoBackupEnable)
         super.onSaveInstanceState(outState)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        (childFragmentManager.findFragmentByTag(AUTO_BACKUP_TIME_PICKER_TAG) as? MaterialTimePicker)
+            ?.let(::bindAutoBackupTimePicker)
     }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
@@ -299,6 +310,12 @@ class SettingsFragment : PreferenceFragmentCompat() {
             .setMinute(appPreferences.getAutoBackupMinute())
             .setTitleText(R.string.auto_backup_time_title)
             .build()
+        bindAutoBackupTimePicker(picker)
+        picker.show(childFragmentManager, AUTO_BACKUP_TIME_PICKER_TAG)
+    }
+
+    private fun bindAutoBackupTimePicker(picker: MaterialTimePicker) {
+        picker.clearOnPositiveButtonClickListeners()
         picker.addOnPositiveButtonClickListener {
             appPreferences.setAutoBackupTime(picker.hour, picker.minute)
             if (appPreferences.getAutoBackupEnabled()) {
@@ -306,7 +323,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
             }
             rebuildPreferences()
         }
-        picker.show(childFragmentManager, "autoBackupTimePicker")
     }
 
     fun startBackupImport() {
@@ -446,7 +462,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 throw e
             } catch (e: Exception) {
                 if (isAdded) {
-                    Toast.makeText(requireContext(), R.string.clear_data_failed, Toast.LENGTH_SHORT).show()
+                    toast(requireContext(), R.string.clear_data_failed, Toast.LENGTH_SHORT)
                 }
                 return@launch
             }
@@ -455,7 +471,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
             }
             val message = count?.let { resources.getQuantityString(R.plurals.cleared_entries, it, it) }
                 ?: getString(R.string.cleared_done)
-            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+            toast(requireContext(), message, Toast.LENGTH_SHORT)
         }
     }
 
@@ -469,7 +485,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
             }
             if (folder == null) {
                 if (configuredFolderUri != null) {
-                    Toast.makeText(requireContext(), R.string.backup_folder_unavailable, Toast.LENGTH_SHORT).show()
+                    toast(requireContext(), R.string.backup_folder_unavailable, Toast.LENGTH_SHORT)
                 }
                 pendingExportToFolder = true
                 startPickBackupFolder()
@@ -583,6 +599,13 @@ class SettingsFragment : PreferenceFragmentCompat() {
             confirmButton.setTextColor(MaterialColors.getColor(confirmButton, androidx.appcompat.R.attr.colorError))
             confirmButton.isEnabled = false
             val label = getString(R.string.backup_import_wipe_action)
+            if (BuildConfig.DEBUG) {
+                confirmButton.text = "$label (3)"
+            }
+            BackupDebugHooks.noteWipeWarningShown(
+                confirmButton.text.toString(),
+                initiallyDisabled = !confirmButton.isEnabled,
+            )
             val countdown = object : CountDownTimer(3000, 250) {
                 override fun onTick(millisUntilFinished: Long) {
                     confirmButton.text = "$label (${millisUntilFinished / 1000 + 1})"
@@ -591,6 +614,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 override fun onFinish() {
                     confirmButton.text = label
                     confirmButton.isEnabled = true
+                    BackupDebugHooks.noteWipeWarningArmed()
                 }
             }
             countdown.start()
@@ -620,6 +644,14 @@ class SettingsFragment : PreferenceFragmentCompat() {
             .setView(container)
             .setCancelable(false)
             .create()
+        val dialogLifecycle = viewLifecycleOwner.lifecycle
+        val destroyObserver = object : DefaultLifecycleObserver {
+            override fun onDestroy(owner: LifecycleOwner) {
+                dialog.dismiss()
+            }
+        }
+        dialogLifecycle.addObserver(destroyObserver)
+        dialog.setOnDismissListener { dialogLifecycle.removeObserver(destroyObserver) }
         dialog.show()
         val appContext = requireContext().applicationContext
         val started = BackupImportPipeline.start(appContext, data, createSafety) { message ->
@@ -633,7 +665,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         }
         if (!started) {
             dialog.dismiss()
-            Toast.makeText(requireContext(), R.string.backup_import_already_running, Toast.LENGTH_SHORT).show()
+            toast(requireContext(), R.string.backup_import_already_running, Toast.LENGTH_SHORT)
         }
     }
 
@@ -646,6 +678,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     companion object {
+        private const val AUTO_BACKUP_TIME_PICKER_TAG = "autoBackupTimePicker"
         private const val ARG_PAGE = "settingsPage"
         private const val ARG_SEARCH_QUERY = "settingsSearchQuery"
         private const val STATE_EXPORT_SETTINGS = "settingsExportIncludeSettings"

@@ -6,10 +6,10 @@ import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import com.github.barteksc.pdfviewer.PDFView
-import com.github.barteksc.pdfviewer.link.DefaultLinkHandler
 import com.github.barteksc.pdfviewer.link.LinkHandler
 import com.github.barteksc.pdfviewer.model.LinkTapEvent
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.ui.openDocumentLink
 import com.gitlab.mudlej.MjPdfReader.data.Preferences
 import com.gitlab.mudlej.MjPdfReader.ui.reader.DocumentState
 import android.graphics.RectF
@@ -326,8 +326,6 @@ class ReaderNavigationController(
     }
 
     private inner class BackTrackingLinkHandler : LinkHandler {
-        private val defaultLinkHandler = DefaultLinkHandler(binding.pdfView)
-
         override fun handleLinkEvent(event: LinkTapEvent) {
             val destPageIndex = event.link.destPageIdx
             if (event.link.uri.isNullOrEmpty() && destPageIndex != null) {
@@ -337,7 +335,9 @@ class ReaderNavigationController(
                 binding.pdfView.jumpTo(destPageIndex)
                 showLinkJumpBackSnackbar(originPageIndex, originViewState)
             } else {
-                defaultLinkHandler.handleLinkEvent(event)
+                event.link.uri?.takeIf { it.isNotEmpty() }?.let {
+                    openDocumentLink(binding.root, it)
+                }
             }
         }
     }
