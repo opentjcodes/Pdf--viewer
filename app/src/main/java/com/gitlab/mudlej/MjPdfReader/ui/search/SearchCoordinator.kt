@@ -109,6 +109,7 @@ object SearchCoordinator {
         search.listeners.add(listener)
         active = search
         if (BuildConfig.DEBUG) {
+            SearchTestHooks.noteSearchStarted()
             lastFinished = null
         }
         val appContext = activity.applicationContext
@@ -183,6 +184,7 @@ object SearchCoordinator {
                     }
                 }
                 search.pagesScanned = pageNumber
+                SearchTestHooks.notePageScanned(search.key.fileHash, search.key.query, pageNumber)
                 publishProgress(search, pageNumber, pageCount)
                 val isBatchBoundary = pageNumber % SEARCH_BATCH_PAGES == 0 || pageNumber == pageCount
                 if (isBatchBoundary && results.size > lastPublishedCount) {
@@ -193,6 +195,7 @@ object SearchCoordinator {
                     }
                 }
             }
+            SearchTestHooks.noteSearchCompleted()
             SearchSessionCache.put(search.key.fileHash, search.key.query, search.key.ignoreAccents, cacheHits(results))
             finish(search, results.toList())
         } catch (throwable: Throwable) {

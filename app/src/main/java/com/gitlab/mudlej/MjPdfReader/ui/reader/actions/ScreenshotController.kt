@@ -15,6 +15,7 @@ import android.util.Log
 import android.view.View
 import androidx.core.net.toUri
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.ReaderTestHooks
 import com.gitlab.mudlej.MjPdfReader.ui.reader.DocumentState
 import com.gitlab.mudlej.MjPdfReader.pdf.PDF
 import com.gitlab.mudlej.MjPdfReader.databinding.ActivityMainBinding
@@ -24,7 +25,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStream
-import java.util.Date
 
 class ScreenshotController(
     private val activity: Activity,
@@ -35,7 +35,7 @@ class ScreenshotController(
 ) {
 
     fun takeScreenshot() {
-        val now = DateFormat.format("yyyy_MM_dd-hh_mm_ss", Date())
+        val now = DateFormat.format("yyyy_MM_dd-hh_mm_ss", ReaderTestHooks.screenshotDate())
         try {
             val fileName = "${pdf.name.removeSuffix(".pdf")} - ${now}.jpg"
 
@@ -49,7 +49,6 @@ class ScreenshotController(
             }
         }
         catch (e: Throwable) {
-            // Several error may come out with file handling or DOM
             AppSnackbar.make(binding.root, activity.getString(R.string.failed_save_screenshot), Snackbar.LENGTH_LONG).show()
             Log.e("ScreenshotController", "takeScreenshot: failed", e)
         }
@@ -69,7 +68,6 @@ class ScreenshotController(
             contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
             contentValues.put(MediaStore.MediaColumns.MIME_TYPE, "image/*")
 
-            // e.g.     ~/Pictures/app_name/screenshot1.jpg
             contentValues.put(
                 MediaStore.MediaColumns.RELATIVE_PATH,
                 Environment.DIRECTORY_PICTURES + "/${activity.getString(R.string.mj_app_name)}/"
@@ -80,7 +78,7 @@ class ScreenshotController(
         }
         else {
             val imagesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).toString()
-            val image = File(imagesDir, fileName)
+            val image = reserveScreenshotFile(File(imagesDir), fileName)
             Pair(FileOutputStream(image), image.toUri())
         }
         if (fileOutputStream != null) {
@@ -93,4 +91,18 @@ class ScreenshotController(
         fileOutputStream?.close()
         return imageUri
     }
+}
+
+internal fun reserveScreenshotFile(directory: File, fileName: String): File {
+    if (!directory.isDirectory && !directory.mkdirs()) {
+        throw IOException("Cannot create screenshot directory $directory")
+    }
+    val stem = fileName.removeSuffix(".jpg")
+    var image = File(directory, fileName)
+    var number = 2
+    while (!image.createNewFile()) {
+        image = File(directory, "$stem ($number).jpg")
+        number++
+    }
+    return image
 }

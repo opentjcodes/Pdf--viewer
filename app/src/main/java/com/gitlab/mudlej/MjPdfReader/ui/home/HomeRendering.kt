@@ -163,11 +163,11 @@ internal class HomeRendering(
         if (storageAccess == hasAccess) {
             return
         }
-        recentTab.invalidateAccessRender()
         storageAccess = hasAccess
         storageAccessRevision++
         coversNeedRebind = true
         accessRefreshScheduled = true
+        recentTab.invalidateAccessRender()
         libraryScanner.onStorageAccessChanged(hasAccess)
         invalidateAvailability()
     }

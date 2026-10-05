@@ -44,7 +44,6 @@ class PdfExtractor(
         val index = getIndex(pageNumber) ?: return ""
         if (BuildConfig.DEBUG) {
             PdfExtractorDebug.onPageExtraction()
-            PdfExtractorDebug.awaitPageDelay()
         }
         var opened = false
 

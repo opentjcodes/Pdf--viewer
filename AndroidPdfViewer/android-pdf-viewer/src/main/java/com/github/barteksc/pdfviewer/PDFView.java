@@ -28,6 +28,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
+import android.graphics.DrawFilter;
 import android.graphics.Paint;
 import android.graphics.Paint.Style;
 import android.graphics.PaintFlagsDrawFilter;
@@ -804,6 +805,8 @@ public class PDFView extends RelativeLayout {
     private boolean enableAntialiasing = true;
     private PaintFlagsDrawFilter antialiasFilter =
         new PaintFlagsDrawFilter(0, Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final PaintFlagsDrawFilter pageBitmapDrawFilter =
+        new PaintFlagsDrawFilter(Paint.ANTI_ALIAS_FLAG, Paint.FILTER_BITMAP_FLAG);
 
     /**
      * Spacing between pages, in px
@@ -1713,7 +1716,7 @@ public class PDFView extends RelativeLayout {
             }
 
             Rect srcRect = new Rect(srcLeft, srcTop, srcRight, srcBottom);
-            canvas.drawBitmap(bitmap, srcRect, dstRect, paint);
+            drawPageBitmap(canvas, bitmap, srcRect, dstRect);
 
             canvas.translate(-localTranslationX, -localTranslationY);
         }
@@ -1773,7 +1776,7 @@ public class PDFView extends RelativeLayout {
                 return;
             }
 
-            canvas.drawBitmap(renderedBitmap, srcRect, dstRect, paint);
+            drawPageBitmap(canvas, renderedBitmap, srcRect, dstRect);
 
             if (Constants.DEBUG_MODE) {
                 debugPaint.setColor(part.getPage() % 2 == 0 ? Color.RED : Color.BLUE);
@@ -1782,6 +1785,18 @@ public class PDFView extends RelativeLayout {
 
             // Restore the canvas position
             canvas.translate(-localTranslationX, -localTranslationY);
+        }
+    }
+
+    private void drawPageBitmap(Canvas canvas, Bitmap bitmap, Rect source, RectF destination) {
+        DrawFilter previousFilter = canvas.getDrawFilter();
+        if (enableAntialiasing) {
+            canvas.setDrawFilter(pageBitmapDrawFilter);
+        }
+        try {
+            canvas.drawBitmap(bitmap, source, destination, paint);
+        } finally {
+            canvas.setDrawFilter(previousFilter);
         }
     }
 

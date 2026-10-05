@@ -138,12 +138,14 @@ class DocumentLoader(
     }
 
     fun initPdfViewAndLoad(viewConfigurator: Configurator, savePassword: Boolean = false) {
+        com.gitlab.mudlej.MjPdfReader.core.debug.ReaderTestHooks.noteDocumentLoadStarted()
         var loadToken = vm.currentLoadToken
         val documentUri = doc.uri
         val previousHash = doc.fileHash
         state = LoadState.Loading
         scheduleLoadProgress(loadToken, documentUri)
         scope.launch {
+            com.gitlab.mudlej.MjPdfReader.core.debug.ReaderTestHooks.awaitDocumentLoadRelease()
             val hash = if (vm.revalidateDocumentOnLoad) {
                 resolveDocumentIdentity(documentUri) ?: previousHash
             } else {

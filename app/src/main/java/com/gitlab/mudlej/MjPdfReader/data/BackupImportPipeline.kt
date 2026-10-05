@@ -39,6 +39,7 @@ object BackupImportPipeline {
         val backupManager = BackupManager(appContext, PdfRepository(AppDatabase.getInstance(appContext)))
         scope.launch {
             val plan = try {
+                BackupDebugHooks.awaitImportRelease()
                 backupManager.prepareImport(data)
             } catch (exception: Exception) {
                 val message = appContext.getString(

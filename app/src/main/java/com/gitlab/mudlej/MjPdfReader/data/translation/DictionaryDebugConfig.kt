@@ -3,6 +3,7 @@
 package com.gitlab.mudlej.MjPdfReader.data.translation
 
 import com.gitlab.mudlej.MjPdfReader.BuildConfig
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 
 object DictionaryDebugConfig {
@@ -16,10 +17,15 @@ object DictionaryDebugConfig {
     @Volatile
     var chunkDelayMillis = 0L
 
+    @Volatile
+    var chunkBarrier: CompletableDeferred<Unit>? = null
+
     fun clear() {
         urlOverride = null
         sha256Override = null
         chunkDelayMillis = 0L
+        chunkBarrier?.complete(Unit)
+        chunkBarrier = null
     }
 
     fun resolveUrl(configured: String): String {
@@ -40,6 +46,7 @@ object DictionaryDebugConfig {
         if (!BuildConfig.DEBUG) {
             return
         }
+        chunkBarrier?.await()
         val millis = chunkDelayMillis
         if (millis > 0) {
             delay(millis)

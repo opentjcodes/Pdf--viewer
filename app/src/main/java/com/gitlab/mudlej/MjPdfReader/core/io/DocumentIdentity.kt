@@ -4,6 +4,7 @@ package com.gitlab.mudlej.MjPdfReader.core.io
 
 import android.content.Context
 import android.net.Uri
+import com.github.barteksc.pdfviewer.source.UriSource
 import com.gitlab.mudlej.MjPdfReader.data.OnlineDocumentStore
 import com.gitlab.mudlej.MjPdfReader.pdf.PDF
 import kotlinx.coroutines.Dispatchers
@@ -56,7 +57,7 @@ object DocumentIdentity {
 
     private fun fromDescriptor(context: Context, uri: Uri): DocumentIdentities? {
         return runCatching {
-            context.contentResolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+            UriSource.openReadDescriptor(context, uri)?.use { descriptor ->
                 val length = descriptor.statSize
                 if (length <= 0L) return@use null
                 FileInputStream(descriptor.fileDescriptor).use { stream ->

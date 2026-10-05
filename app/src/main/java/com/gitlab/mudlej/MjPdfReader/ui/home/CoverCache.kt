@@ -112,6 +112,15 @@ class CoverCache private constructor(private val context: Context) {
         }
     }
 
+    suspend fun debugIdleCacheStats(): LruCacheStats? {
+        if (!BuildConfig.DEBUG) return null
+        return inFlightMutex.withLock {
+            if (inFlight.isEmpty()) debugCacheStats() else null
+        }
+    }
+
+    fun debugEvictionCount(): Int? = if (BuildConfig.DEBUG) memoryCache.evictionCount() else null
+
     fun clearAllBlocking() {
         memoryCache.evictAll()
         coverDir.listFiles()?.forEach { it.delete() }

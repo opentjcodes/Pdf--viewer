@@ -112,6 +112,7 @@ class HomeActivity : AppCompatActivity(), HomeItemFunctions {
 
     private val introLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            homeViewModel.introInProgress = false
             showWhatsNewOnFirstRun()
         }
 
@@ -170,12 +171,13 @@ class HomeActivity : AppCompatActivity(), HomeItemFunctions {
     private fun launchIntroOnFirstInstall(): Boolean {
         val launchIntro = pref.getFirstInstall()
         if (launchIntro) {
+            homeViewModel.introInProgress = true
             pref.setFirstInstall(false)
             pref.setShowFeaturesDialog(true)
             pref.setLastSeenVersionCode(BuildConfig.VERSION_CODE)
             introLauncher.launch(Intent(this, MainIntroActivity::class.java))
         }
-        return launchIntro
+        return homeViewModel.introInProgress
     }
 
     private fun redirectToReaderIfHomeDisabled(): Boolean {

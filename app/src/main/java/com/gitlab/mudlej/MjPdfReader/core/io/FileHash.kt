@@ -4,6 +4,7 @@ package com.gitlab.mudlej.MjPdfReader.core.io
 
 import android.content.Context
 import android.net.Uri
+import com.github.barteksc.pdfviewer.source.UriSource
 import com.gitlab.mudlej.MjPdfReader.data.OnlineDocumentStore
 import com.gitlab.mudlej.MjPdfReader.pdf.PDF
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +37,7 @@ suspend fun computeTailHash(context: Context, uri: Uri?): String? {
     return withContext(Dispatchers.IO) {
         runCatching {
             OnlineDocumentStore.fileFor(context, uri.toString())?.let { return@runCatching computeTailHash(it) }
-            context.contentResolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+            UriSource.openReadDescriptor(context, uri)?.use { descriptor ->
                 val length = descriptor.statSize
                 if (length <= 0L) return@use null
                 val size = min(PDF.HASH_SIZE.toLong(), length).toInt()

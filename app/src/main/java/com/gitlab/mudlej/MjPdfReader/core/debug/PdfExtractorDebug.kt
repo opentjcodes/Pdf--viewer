@@ -3,6 +3,7 @@
 package com.gitlab.mudlej.MjPdfReader.core.debug
 
 import com.gitlab.mudlej.MjPdfReader.BuildConfig
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
 
 object PdfExtractorDebug {
@@ -15,36 +16,47 @@ object PdfExtractorDebug {
     @Volatile
     private var failPageNumber = NO_PAGE
 
-    @Volatile
-    private var pageDelayMs = 0L
+    private val setupGateLock = Any()
+    private var setupGate: SetupGate? = null
 
-
-    fun delayEachPageBy(millis: Long) {
-        if (!BuildConfig.DEBUG) {
-            return
-        }
-        pageDelayMs = millis.coerceAtLeast(0L)
+    private class SetupGate {
+        var claimed = false
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
     }
 
-    fun clearPageDelay() {
-        if (!BuildConfig.DEBUG) {
-            return
+    fun blockNextTextModeSetup() {
+        if (!BuildConfig.DEBUG) return
+        synchronized(setupGateLock) {
+            setupGate?.release?.countDown()
+            setupGate = SetupGate()
         }
-        pageDelayMs = 0L
     }
 
-    fun awaitPageDelay() {
-        if (!BuildConfig.DEBUG) {
-            return
+    fun awaitTextModeSetupGate() {
+        if (!BuildConfig.DEBUG) return
+        val gate = synchronized(setupGateLock) {
+            val current = setupGate ?: return
+            if (current.claimed) return
+            current.claimed = true
+            current
         }
-        val millis = pageDelayMs
-        if (millis <= 0L) {
-            return
+        gate.entered.countDown()
+        gate.release.await()
+    }
+
+    fun isTextModeSetupBlocked(): Boolean {
+        if (!BuildConfig.DEBUG) return false
+        return synchronized(setupGateLock) {
+            setupGate?.let { it.entered.count == 0L && it.release.count > 0L } == true
         }
-        try {
-            Thread.sleep(millis)
-        } catch (interrupted: InterruptedException) {
-            Thread.currentThread().interrupt()
+    }
+
+    fun releaseTextModeSetup() {
+        if (!BuildConfig.DEBUG) return
+        synchronized(setupGateLock) {
+            setupGate?.release?.countDown()
+            setupGate = null
         }
     }
 

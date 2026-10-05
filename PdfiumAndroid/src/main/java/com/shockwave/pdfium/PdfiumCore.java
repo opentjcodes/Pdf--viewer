@@ -51,7 +51,7 @@ public class PdfiumCore {
         }
     }
 
-    private native long nativeOpenDocument(int fd, String password);
+    private native long nativeOpenDocument(int fd, String password) throws IOException;
 
     private native long nativeOpenMemDocument(byte[] data, String password);
 
@@ -227,10 +227,21 @@ public class PdfiumCore {
     public PdfDocument newDocument(ParcelFileDescriptor fd, String password) throws IOException {
         PdfDocument document = new PdfDocument();
         document.parcelFileDescriptor = fd;
-        synchronized (lock) {
-            document.mNativeDocPtr = nativeOpenDocument(getNumFd(fd), password);
+        try {
+            synchronized (lock) {
+                document.mNativeDocPtr = nativeOpenDocument(getNumFd(fd), password);
+            }
+            return document;
+        } catch (IOException | RuntimeException | Error failure) {
+            if (fd != null) {
+                try {
+                    fd.close();
+                } catch (IOException closeFailure) {
+                    failure.addSuppressed(closeFailure);
+                }
+            }
+            throw failure;
         }
-        return document;
     }
 
     /** Create new document from bytearray */

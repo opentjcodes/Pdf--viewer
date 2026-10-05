@@ -7,11 +7,31 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
 
 object SearchTestHooks {
+    @Volatile
+    var pageScanObserver: ((String?, String, Int) -> Unit)? = null
+
+    fun notePageScanned(fileHash: String?, query: String, page: Int) {
+        if (BuildConfig.DEBUG) pageScanObserver?.invoke(fileHash, query, page)
+    }
 
     @Volatile
     private var failNextSearchHighlight = false
 
     private val navigationActions = AtomicInteger()
+    private val searchStarts = AtomicInteger()
+    private val searchCompletions = AtomicInteger()
+
+    fun noteSearchCompleted() {
+        if (BuildConfig.DEBUG) searchCompletions.incrementAndGet()
+    }
+
+    fun searchCompletionCount(): Int = searchCompletions.get()
+
+    fun noteSearchStarted() {
+        if (BuildConfig.DEBUG) searchStarts.incrementAndGet()
+    }
+
+    fun searchStartCount(): Int = searchStarts.get()
     private val batchLock = Any()
 
     @Volatile
@@ -91,6 +111,9 @@ object SearchTestHooks {
         }
         failNextSearchHighlight = false
         navigationActions.set(0)
+        pageScanObserver = null
+        searchStarts.set(0)
+        searchCompletions.set(0)
         releaseResultBatch()
         batchBlocked = false
     }

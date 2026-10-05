@@ -8,8 +8,25 @@ import androidx.preference.PreferenceManager
 import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CompletableDeferred
 
 object BackupDebugHooks {
+    @Volatile
+    var importBarrier: CompletableDeferred<Unit>? = null
+    private val blockedImports = AtomicInteger()
+
+    suspend fun awaitImportRelease() {
+        if (!BuildConfig.DEBUG) return
+        val barrier = importBarrier ?: return
+        blockedImports.incrementAndGet()
+        try {
+            barrier.await()
+        } finally {
+            blockedImports.decrementAndGet()
+        }
+    }
+
+    fun isImportBlocked(): Boolean = blockedImports.get() > 0
 
     const val SUPPRESS_RESTART_KEY = "debug_backup_suppress_restart"
 

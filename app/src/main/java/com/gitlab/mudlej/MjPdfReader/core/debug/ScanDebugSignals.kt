@@ -14,8 +14,32 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CompletableDeferred
 
 object ScanDebugSignals {
+    @Volatile
+    var discoveryBarrier: CompletableDeferred<Unit>? = null
+    private val blockedDiscoveries = AtomicInteger()
+    private val queuedManualRefreshes = AtomicInteger()
+
+    suspend fun awaitDiscoveryRelease() {
+        if (!BuildConfig.DEBUG) return
+        val barrier = discoveryBarrier ?: return
+        blockedDiscoveries.incrementAndGet()
+        try {
+            barrier.await()
+        } finally {
+            blockedDiscoveries.decrementAndGet()
+        }
+    }
+
+    fun isDiscoveryBlocked(): Boolean = blockedDiscoveries.get() > 0
+
+    fun noteManualRefreshQueued() {
+        if (BuildConfig.DEBUG) queuedManualRefreshes.incrementAndGet()
+    }
+
+    fun manualRefreshQueueCount(): Int = queuedManualRefreshes.get()
     const val TAG = "MjPdfScan"
     const val METADATA_TAG = "MjPdfMetadata"
 

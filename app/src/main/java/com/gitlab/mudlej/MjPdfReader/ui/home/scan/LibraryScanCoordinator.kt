@@ -168,6 +168,7 @@ class LibraryScanCoordinator(
             return
         }
         if (index.value.active) {
+            if (reason == ScanRefreshReason.MANUAL) ScanDebugSignals.noteManualRefreshQueued()
             if (pendingRefresh != ScanRefreshReason.FULL_RESCAN) pendingRefresh = reason
             return
         }
@@ -263,6 +264,7 @@ class LibraryScanCoordinator(
             ScanDebugSignals.noteDiscoveryStarted(startedGeneration)
             var source = DiscoverySource.MEDIA_STORE
             try {
+                ScanDebugSignals.awaitDiscoveryRelease()
                 ScanDiscovery(context) { event ->
                     send(event)
                     if (event is ScanEvent.DiscoverySourceFinished) source = DiscoverySource.FILESYSTEM

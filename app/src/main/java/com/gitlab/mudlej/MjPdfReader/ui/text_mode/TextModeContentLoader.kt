@@ -83,9 +83,6 @@ class TextModeContentLoader(
         val extractor = withContext(Dispatchers.IO) {
             extractionMutex.withLock {
                 try {
-                    if (BuildConfig.DEBUG) {
-                        PdfExtractorDebug.awaitPageDelay()
-                    }
                     createPdfExtractor(activity, uri, password).also { created ->
                         if (isClosing) {
                             created.close()
@@ -112,6 +109,9 @@ class TextModeContentLoader(
                 pdfExtractor = extractor
                 pendingExtractor = null
                 pageCount = pdfExtractor.getPageCount()
+                if (BuildConfig.DEBUG) {
+                    PdfExtractorDebug.awaitTextModeSetupGate()
+                }
                 true
             }
         }
