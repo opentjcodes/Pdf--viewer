@@ -33,7 +33,6 @@
         <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.App.Medium</item>
         <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.App.Large</item>
         <item name="floatingActionButtonStyle">@style/ExpressiveFab</item>
-        <item name="searchBarStyle">@style/ExpressiveSearchBar</item>
         <item name="colorSurfaceVariant">@color/md_theme_surfaceVariant</item>
         <item name="colorOnSurfaceVariant">@color/md_theme_onSurfaceVariant</item>
         <item name="colorOutline">@color/md_theme_outline</item>
@@ -196,7 +195,7 @@
     </style>
 
     <style name="ChromeSnackbar" parent="Widget.Material3.Snackbar">
-        <item name="backgroundTint">?attr/colorInverseSurface</item>
+        <item name="backgroundTint">?attr/colorSurfaceInverse</item>
         <item name="shapeAppearance">@style/ChromeSnackbarShape</item>
         <item name="elevation">6dp</item>
         <item name="android:layout_margin">16dp</item>
