@@ -16,6 +16,7 @@
 
         <com.google.android.material.search.SearchBar
             android:id="@+id/searchBar"
+            style="@style/ExpressiveSearchBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="16dp"
