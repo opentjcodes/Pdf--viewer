@@ -1,0 +1,860 @@
+diff --git a/core/fpdftext/cpdf_textpage.cpp b/core/fpdftext/cpdf_textpage.cpp
+index 44bde7f76f4605e06a11bdf2e0ebb2d6d38e74a8..411646e65dbfff8620d1378e151359bbc3548357 100644
+--- a/core/fpdftext/cpdf_textpage.cpp
++++ b/core/fpdftext/cpdf_textpage.cpp
+@@ -882,38 +882,60 @@ void CPDF_TextPage::CloseTempLine() {
+   if (rtl_) {
+     bidi.SetOverallDirectionRight();
+   }
+-  CFX_BidiChar::Direction current_direction = bidi.OverallDirection();
+-  for (const auto& segment : bidi) {
+-    auto str_span = str.span().subspan(segment.start, segment.count);
+-    auto char_span =
+-        pdfium::span(temp_char_list_).subspan(segment.start, segment.count);
+-    if (segment.direction == CFX_BidiChar::Direction::kRight ||
+-        (segment.direction == CFX_BidiChar::Direction::kNeutral &&
+-         current_direction == CFX_BidiChar::Direction::kRight)) {
+-      current_direction = CFX_BidiChar::Direction::kRight;
+-      const bool is_actual_text =
+-          !char_span.empty() &&
+-          char_span[0].char_type() == CharType::kActualText;
+-      if (is_actual_text) {
+-        // Since /ActualText strings are already in logical order, pass their
+-        // characters in forward order instead of reversing them.
+-        for (auto [c, info] : fxcrt::Zip(str_span, char_span)) {
+-          AddCharInfo(c, info, /*is_rtl=*/true);
++  // Bidi may move glyphs/replacement occurrences, but must not reverse or split
++  // the logical Unicode sequence inside a ToUnicode mapping or ActualText span.
++  std::map<uint32_t, std::vector<size_t>> mappings;
++  for (size_t i = 0; i < temp_char_list_.size(); ++i) {
++    if (temp_char_list_[i].logical_unit()) {
++      mappings[temp_char_list_[i].logical_unit()].push_back(i);
++    }
++  }
++  const auto add_character = [&](wchar_t wc, const CharInfo& info, bool is_rtl) {
++    if (!info.logical_unit()) {
++      AddCharInfo(wc, info, is_rtl);
++      return;
++    }
++    auto mapping = mappings.find(info.logical_unit());
++    if (mapping == mappings.end()) {
++      return;
++    }
++    for (size_t index : mapping->second) {
++      // Logical Unicode is not a visual glyph code. Mirroring it again changes
++      // explicit punctuation and can change a nonprinting sentinel's indexing.
++      const CharInfo& mapped = temp_char_list_[index];
++      const BidiClass direction = pdfium::unicode::GetBidiClass(str[index]);
++      const bool normalize_rtl =
++          !mapped.has_logical_unicode() &&
++          (direction == BidiClass::kR || direction == BidiClass::kAL);
++      AddCharInfo(str[index], mapped, normalize_rtl);
++    }
++    mappings.erase(mapping);
++  };
++  const auto emit = [&](size_t index, bool is_rtl) {
++    add_character(str[index], temp_char_list_[index], is_rtl);
++  };
++  const auto visit = [&](const CFX_BidiString& order, size_t offset,
++                         auto&& visit_character) {
++    CFX_BidiChar::Direction direction = order.OverallDirection();
++    for (const auto& segment : order) {
++      if (segment.direction == CFX_BidiChar::Direction::kRight ||
++          (segment.direction == CFX_BidiChar::Direction::kNeutral &&
++           direction == CFX_BidiChar::Direction::kRight)) {
++        direction = CFX_BidiChar::Direction::kRight;
++        for (size_t i = segment.count; i > 0; --i) {
++          visit_character(offset + segment.start + i - 1, true);
+         }
+       } else {
+-        for (size_t i = segment.count; i > 0; --i) {
+-          AddCharInfo(str_span[i - 1], char_span[i - 1], /*is_rtl=*/true);
++        if (segment.direction != CFX_BidiChar::Direction::kLeftWeak) {
++          direction = CFX_BidiChar::Direction::kLeft;
++        }
++        for (size_t i = 0; i < segment.count; ++i) {
++          visit_character(offset + segment.start + i, false);
+         }
+-      }
+-    } else {
+-      if (segment.direction != CFX_BidiChar::Direction::kLeftWeak) {
+-        current_direction = CFX_BidiChar::Direction::kLeft;
+-      }
+-      for (auto [c, info] : fxcrt::Zip(str_span, char_span)) {
+-        AddCharInfo(c, info, /*is_rtl=*/false);
+       }
+     }
+-  }
++  };
++  visit(bidi, 0, emit);
+   temp_char_list_.clear();
+   temp_text_buf_.Delete(0, temp_text_buf_.GetLength());
+ }
+@@ -1080,6 +1102,7 @@ void CPDF_TextPage::ProcessMarkedContent(const TransformedTextObject& obj) {
+   }
+ 
+   const size_t original_size = temp_char_list_.size();
++  const uint32_t logical_unit = ++next_logical_unit_;
+   for (size_t k = 0; k < actual_text.GetLength(); ++k) {
+     wchar_t wc = actual_text[k];
+     if (wc <= 0x80 && !isprint(wc)) {
+@@ -1096,6 +1119,7 @@ void CPDF_TextPage::ProcessMarkedContent(const TransformedTextObject& obj) {
+     temp_char_list_.push_back(CharInfo(CharType::kActualText,
+                                         CPDF_Font::kInvalidCharCode, wc, origin,
+                                         char_box, matrix, text_obj));
++    temp_char_list_.back().set_logical_unit(logical_unit, true);
+   }
+   if (temp_char_list_.size() != original_size) {
+     processed_actual_text_[obj.form_occurrence_].insert(actual_text_item);
+@@ -1127,6 +1151,21 @@ void CPDF_TextPage::ReverseTempTextBufs(size_t char_list_index,
+     pdfium::span<wchar_t> reverse_span = temp_span.subspan(buf_index);
+     std::ranges::reverse(reverse_span);
+   }
++  // The mirrored transform reverses glyph order, not a glyph's Unicode map.
++  for (size_t begin = char_list_index; begin < temp_char_list_.size();) {
++    size_t end = begin + 1;
++    const uint32_t mapping = temp_char_list_[begin].logical_unit();
++    if (mapping) {
++      while (end < temp_char_list_.size() &&
++             temp_char_list_[end].logical_unit() == mapping) {
++        ++end;
++      }
++      std::ranges::reverse(pdfium::span(temp_char_list_).subspan(begin, end - begin));
++      std::ranges::reverse(temp_span.subspan(buf_index + begin - char_list_index,
++                                            end - begin));
++    }
++    begin = end;
++  }
+ }
+ 
+ void CPDF_TextPage::ProcessTransformedTextObjects() {
+@@ -1431,6 +1470,7 @@ bool CPDF_TextPage::ProcessTextObjectItems(CPDF_TextObject* text_object,
+   RetainPtr<CPDF_Font> const font = text_object->GetFont();
+ 
+   float spacing = 0;
++  bool previous_rtl_cluster = false;
+   const size_t nItems = text_object->CountItems();
+   const std::vector<float>& kernings = text_object->GetCharKernings();
+   for (size_t i = 0; i < nItems; ++i) {
+@@ -1490,6 +1530,7 @@ bool CPDF_TextPage::ProcessTextObjectItems(CPDF_TextObject* text_object,
+     if (unicode.IsEmpty()) {
+       temp_char_list_.push_back(charinfo);
+       temp_text_buf_.AppendChar(0xfffe);
++      previous_rtl_cluster = false;
+       continue;
+     }
+ 
+@@ -1516,7 +1557,34 @@ bool CPDF_TextPage::ProcessTextObjectItems(CPDF_TextObject* text_object,
+       }
+     }
+     if (add_unicode) {
++      if (unicode.GetLength() > 1) {
++        charinfo.set_logical_unit(++next_logical_unit_, true);
++      }
++      // Preserve source-adjacent base/mark clusters in one text-showing object,
++      // before a mirrored transform or visual bidi traversal reorders glyphs.
++      const bool attach_mark =
++          previous_rtl_cluster && i > 0 && !temp_char_list_.empty() &&
++          temp_char_list_.back().text_object() == text_object &&
++          temp_char_list_.back().unicode() != L' ' &&
++          font->GetCharWidth(item.char_code_) == 0 &&
++          std::ranges::all_of(unicode.span(), [](wchar_t wc) {
++            return pdfium::unicode::GetBidiClass(wc) == BidiClass::kNSM;
++          });
++      if (attach_mark) {
++        CharInfo& previous = temp_char_list_.back();
++        if (!previous.logical_unit()) {
++          previous.set_logical_unit(++next_logical_unit_, false);
++        }
++        charinfo.set_logical_unit(previous.logical_unit(),
++                                  charinfo.has_logical_unicode());
++      }
++      previous_rtl_cluster = attach_mark;
+       for (wchar_t c : unicode) {
++        const BidiClass direction = pdfium::unicode::GetBidiClass(c);
++        if (direction != BidiClass::kNSM) {
++          previous_rtl_cluster =
++              direction == BidiClass::kR || direction == BidiClass::kAL;
++        }
+         charinfo.set_unicode(c);
+         temp_text_buf_.AppendChar(c ? c : 0xfffe);
+         temp_char_list_.push_back(charinfo);
+diff --git a/core/fpdftext/cpdf_textpage.h b/core/fpdftext/cpdf_textpage.h
+index 31cb9662a7986d88edb63c1fa92104830a9330fa..cf58ceb17e36f475a32fdd46558ff4475ae31cfb 100644
+--- a/core/fpdftext/cpdf_textpage.h
++++ b/core/fpdftext/cpdf_textpage.h
+@@ -63,6 +63,13 @@ class CPDF_TextPage {
+ 
+     uint32_t char_code() const { return char_code_; }
+ 
++    uint32_t logical_unit() const { return logical_unit_; }
++    bool has_logical_unicode() const { return logical_unicode_; }
++    void set_logical_unit(uint32_t unit, bool logical_unicode) {
++      logical_unit_ = unit;
++      logical_unicode_ = logical_unicode;
++    }
++
+     wchar_t unicode() const { return unicode_; }
+     void set_unicode(wchar_t unicode) { unicode_ = unicode; }
+ 
+@@ -78,8 +85,10 @@ class CPDF_TextPage {
+ 
+    private:
+     CharType char_type_ = CharType::kNormal;
++    bool logical_unicode_ = false;
+     wchar_t unicode_ = 0;  // Above `char_code_` to potentially pack tighter.
+     uint32_t char_code_ = 0;
++    uint32_t logical_unit_ = 0;
+     CFX_PointF origin_;
+     CFX_FloatRect char_box_;
+     CFX_FloatRect loose_char_box_;
+@@ -211,6 +220,7 @@ class CPDF_TextPage {
+   CFX_FloatRect curline_rect_;
+   size_t form_occurrence_ = 0;
+   size_t next_form_occurrence_ = 0;
++  uint32_t next_logical_unit_ = 0;
+   std::map<size_t, std::set<const CPDF_ContentMarkItem*>> processed_actual_text_;
+   std::map<size_t, std::map<const CPDF_ContentMarkItem*, CFX_FloatRect>>
+       actual_text_bounds_;
+diff --git a/fpdfsdk/fpdf_text_embeddertest.cpp b/fpdfsdk/fpdf_text_embeddertest.cpp
+index 43b0f60496a4650c04002c9c8ea2f43c94b59515..983e920e4b8dc92f2311f7366560c51cc61c3d76 100644
+--- a/fpdfsdk/fpdf_text_embeddertest.cpp
++++ b/fpdfsdk/fpdf_text_embeddertest.cpp
+@@ -2706,8 +2706,8 @@ TEST_F(FPDFTextEmbedderTest, ActualTextRtl) {
+        0x05de, 0x05d9, 0x05dd, '\r', '\n',
+        // Third line:
+        'M', 'i', 'r', 'r', 'o', 'r', 'e', 'd', ' ',
+-       // ם:
+-       0x05dd, ']', '(', '\r', '\n',
++       // ActualText supplies logical punctuation; do not mirror it again.
++       0x05dd, '[', ')', '\r', '\n',
+        // Pure RTL case:
+        // שלום (logical order):
+        0x05e9, 0x05dc, 0x05d5, 0x05dd, '\r', '\n',
+@@ -2746,9 +2746,9 @@ TEST_F(FPDFTextEmbedderTest, ActualTextRtl) {
+        // מים (logical order):
+        0x05de, 0x05d9, 0x05dd, '\r', '\n',
+        // Literal RTL text followed by RTL /ActualText case:
+-       // TODO(crbug.com/525087036): Should be in logical order.
+-       // םולש (/ActualText):
+-       0x05dd, 0x05d5, 0x05dc, 0x05e9,
++       // crbug.com/525087036 is resolved by ordering source units: move the
++       // /ActualText occurrence intact, preserving its logical payload.
++       0x05e9, 0x05dc, 0x05d5, 0x05dd,
+        // בן (literal text):
+        0x05d1, 0x05df, '\0'});
+   static constexpr int kExpectedTextSize = std::size(kExpectedText);
+@@ -2759,3 +2759,213 @@ TEST_F(FPDFTextEmbedderTest, ActualTextRtl) {
+   EXPECT_THAT(pdfium::span(buffer).first<kExpectedTextSize>(),
+               ElementsAreArray(kExpectedText));
+ }
++
++TEST_F(FPDFTextEmbedderTest, ActualTextRtlMixedUnits) {
++  ASSERT_TRUE(OpenDocument("actualtext_rtl_units.pdf"));
++  // Page 0 paints [ActualText SHEEN], ordinary YA AIN LAM LAM. The replacement
++  // overrides the first glyph's SHEEN SHADDA KASRATAN mapping and moves last.
++  // Page 1 paints ordinary MIM BEH, then one logical LAM LAM AIN YA SHEEN
++  // replacement. Reverse source units, never the replacement's interior.
++  // Both targets are one RTL segment; each page's second baseline is MIM.
++  static constexpr struct {
++    const char* name;
++    int char_count;
++    std::array<unsigned short, 11> text;
++  } kCases[] = {
++      {"ActualTextFirst",
++       8,
++       {0x0644, 0x0644, 0x0639, 0x064a, 0x0634, '\r', '\n', 0x0645, 0}},
++      {"OrdinaryFirst",
++       10,
++       {0x0644, 0x0644, 0x0639, 0x064a, 0x0634, 0x0628, 0x0645, '\r', '\n',
++        0x0645, 0}},
++  };
++  ASSERT_EQ(static_cast<int>(std::size(kCases)), FPDF_GetPageCount(document()));
++  for (int page_index = 0; page_index < static_cast<int>(std::size(kCases));
++       ++page_index) {
++    const auto& test_case = kCases[page_index];
++    SCOPED_TRACE(test_case.name);
++    ScopedPage page = LoadScopedPage(page_index);
++    ASSERT_TRUE(page);
++    ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++    ASSERT_TRUE(text_page);
++    EXPECT_EQ(test_case.char_count, FPDFText_CountChars(text_page.get()));
++    std::array<unsigned short, 11> buffer = {};
++    EXPECT_EQ(test_case.char_count + 1,
++              FPDFText_GetText(text_page.get(), 0, test_case.char_count,
++                               buffer.data()));
++    const size_t text_size = static_cast<size_t>(test_case.char_count + 1);
++    EXPECT_THAT(
++        pdfium::span(buffer).first(text_size),
++        ElementsAreArray(pdfium::span(test_case.text).first(text_size)));
++    for (int i = 0; i < test_case.char_count; ++i) {
++      SCOPED_TRACE(i);
++      EXPECT_EQ(static_cast<unsigned int>(test_case.text[i]),
++                FPDFText_GetUnicode(text_page.get(), i));
++      unsigned short character[2] = {};
++      EXPECT_EQ(2, FPDFText_GetText(text_page.get(), i, 1, character));
++      EXPECT_EQ(test_case.text[i], character[0]);
++      EXPECT_EQ(0, character[1]);
++    }
++
++    static constexpr struct {
++      const wchar_t* text;
++      int index;
++      int count;
++    } kQueries[] = {
++        {L"\u0644\u0644\u0639\u064a\u0634", 0, 5},
++        {L"\u0634", 4, 1},
++    };
++    for (const auto& query_case : kQueries) {
++      SCOPED_TRACE(query_case.index);
++      ScopedFPDFWideString query = GetFPDFWideString(query_case.text);
++      ScopedFPDFTextFind search(
++          FPDFText_FindStart(text_page.get(), query.get(), FPDF_MATCHCASE, 0));
++      ASSERT_TRUE(search);
++      EXPECT_TRUE(FPDFText_FindNext(search.get()));
++      EXPECT_EQ(query_case.index, FPDFText_GetSchResultIndex(search.get()));
++      EXPECT_EQ(query_case.count, FPDFText_GetSchCount(search.get()));
++      EXPECT_FALSE(FPDFText_FindNext(search.get()));
++    }
++  }
++}
++
++TEST_F(FPDFTextEmbedderTest, ArabicLogicalUnitPunctuation) {
++  ASSERT_TRUE(OpenDocument("arabic_unit_boundaries.pdf"));
++  ASSERT_EQ(5, FPDF_GetPageCount(document()));
++  // The same explicit logical string comes from one ToUnicode mapping, then
++  // one ActualText occurrence. RTL movement must not mirror its LTR interior.
++  static constexpr unsigned short kExpectedText[] = {0x0628, ' ', 'A', 'B', 'C',
++                                                     ' ',    '(', 'D', ')', 0};
++  for (int page_index = 0; page_index < 2; ++page_index) {
++    SCOPED_TRACE(page_index);
++    ScopedPage page = LoadScopedPage(page_index);
++    ASSERT_TRUE(page);
++    ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++    ASSERT_TRUE(text_page);
++    EXPECT_EQ(9, FPDFText_CountChars(text_page.get()));
++    unsigned short buffer[10] = {};
++    EXPECT_EQ(10, FPDFText_GetText(text_page.get(), 0, 9, buffer));
++    EXPECT_THAT(buffer, ElementsAreArray(kExpectedText));
++    for (int i = 0; i < 9; ++i) {
++      SCOPED_TRACE(i);
++      EXPECT_EQ(static_cast<unsigned int>(kExpectedText[i]),
++                FPDFText_GetUnicode(text_page.get(), i));
++      unsigned short character[2] = {};
++      EXPECT_EQ(2, FPDFText_GetText(text_page.get(), i, 1, character));
++      EXPECT_EQ(kExpectedText[i], character[0]);
++      EXPECT_EQ(0, character[1]);
++    }
++    ScopedFPDFWideString query = GetFPDFWideString(L"\u0628 ABC (D)");
++    ScopedFPDFTextFind search(
++        FPDFText_FindStart(text_page.get(), query.get(), FPDF_MATCHCASE, 0));
++    ASSERT_TRUE(search);
++    EXPECT_TRUE(FPDFText_FindNext(search.get()));
++    EXPECT_EQ(0, FPDFText_GetSchResultIndex(search.get()));
++    EXPECT_EQ(9, FPDFText_GetSchCount(search.get()));
++    EXPECT_FALSE(FPDFText_FindNext(search.get()));
++  }
++}
++
++TEST_F(FPDFTextEmbedderTest, ArabicSeparateBaseMark) {
++  ASSERT_TRUE(OpenDocument("arabic_unit_boundaries.pdf"));
++  // A single TJ paints SEEN, backs up its 500-unit advance, then overlays a
++  // separately encoded zero-advance FATHA. Cover rotation and a horizontal
++  // cluster with an unrelated second baseline that excludes single-line repair.
++  for (int page_index = 2; page_index < 4; ++page_index) {
++    SCOPED_TRACE(page_index);
++    ScopedPage page = LoadScopedPage(page_index);
++    ASSERT_TRUE(page);
++    ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++    ASSERT_TRUE(text_page);
++    const int count = FPDFText_CountChars(text_page.get());
++    ASSERT_GE(count, 2);
++    std::vector<unsigned short> buffer(count + 1);
++    ASSERT_GE(FPDFText_GetText(text_page.get(), 0, count, buffer.data()), 3);
++    const std::wstring text = GetPlatformWString(buffer.data());
++    // Assert the source cluster only, not the preexisting line-break behavior.
++    EXPECT_NE(std::wstring::npos, text.find(L"\u0633\u064e"));
++    EXPECT_EQ(std::wstring::npos, text.find(L"\u064e\u0633"));
++  }
++}
++
++TEST_F(FPDFTextEmbedderTest, ArabicMappingNonprintingIndex) {
++  ASSERT_TRUE(OpenDocument("arabic_unit_boundaries.pdf"));
++  ScopedPage page = LoadScopedPage(4);
++  ASSERT_TRUE(page);
++  ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++  ASSERT_TRUE(text_page);
++  // BEH NUL TEH is one mapping. Keep the existing text sentinel convention,
++  // without prescribing GetUnicode(1) or literal NUL extraction semantics.
++  // Moving the unit must not desynchronize the printable character after NUL.
++  static constexpr unsigned short kExpectedText[] = {0x0628, 0xfffe, 0x062a, 0};
++  EXPECT_EQ(3, FPDFText_CountChars(text_page.get()));
++  EXPECT_EQ(0x062au, FPDFText_GetUnicode(text_page.get(), 2));
++  unsigned short buffer[4] = {};
++  EXPECT_EQ(4, FPDFText_GetText(text_page.get(), 0, 3, buffer));
++  EXPECT_THAT(buffer, ElementsAreArray(kExpectedText));
++  unsigned short character[2] = {};
++  EXPECT_EQ(2, FPDFText_GetText(text_page.get(), 2, 1, character));
++  EXPECT_EQ(0x062a, character[0]);
++  EXPECT_EQ(0, character[1]);
++  ScopedFPDFWideString query = GetFPDFWideString(L"\u062a");
++  ScopedFPDFTextFind search(
++      FPDFText_FindStart(text_page.get(), query.get(), FPDF_MATCHCASE, 0));
++  ASSERT_TRUE(search);
++  ASSERT_TRUE(FPDFText_FindNext(search.get()));
++  EXPECT_EQ(2, FPDFText_GetSchResultIndex(search.get()));
++  EXPECT_EQ(1, FPDFText_GetSchCount(search.get()));
++  EXPECT_FALSE(FPDFText_FindNext(search.get()));
++}
++
++TEST_F(FPDFTextEmbedderTest, ArabicMarkedPresentationForm) {
++  ASSERT_TRUE(OpenDocument("arabic_marked_presentation.pdf"));
++  ASSERT_EQ(2, FPDF_GetPageCount(document()));
++  // An ordinary U+FE91 base must still normalize to BEH when a separate FATHA
++  // is attached by TJ back-kerning. A structural cluster is not logical text
++  // supplied by ActualText or a multi-codepoint mapping.
++  for (int page_index = 0; page_index < 2; ++page_index) {
++    SCOPED_TRACE(page_index);
++    const bool marked = page_index == 1;
++    const int expected_hits = marked ? 2 : 1;
++    const std::wstring expected = marked ? L"\u0628\u064e" : L"\u0628";
++    const int match_length = static_cast<int>(expected.size());
++    ScopedPage page = LoadScopedPage(page_index);
++    ASSERT_TRUE(page);
++    ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++    ASSERT_TRUE(text_page);
++    const int count = FPDFText_CountChars(text_page.get());
++    ASSERT_GE(count, expected_hits * match_length);
++    std::vector<unsigned short> buffer(count + 1);
++    ASSERT_EQ(count + 1,
++              FPDFText_GetText(text_page.get(), 0, count, buffer.data()));
++    const std::wstring text = GetPlatformWString(buffer.data());
++    // The marked page has two baselines; do not prescribe legacy CRLF output.
++    EXPECT_EQ(expected_hits, std::count(text.begin(), text.end(), L'\u0628'));
++    EXPECT_EQ(marked ? 2 : 0, std::count(text.begin(), text.end(), L'\u064e'));
++    EXPECT_EQ(std::wstring::npos, text.find(L"\ufe91"));
++    for (int i = 0; i < count; ++i) {
++      SCOPED_TRACE(i);
++      EXPECT_EQ(static_cast<unsigned int>(buffer[i]),
++                FPDFText_GetUnicode(text_page.get(), i));
++    }
++
++    ScopedFPDFWideString query = GetFPDFWideString(expected);
++    ScopedFPDFTextFind search(
++        FPDFText_FindStart(text_page.get(), query.get(), FPDF_MATCHCASE, 0));
++    ASSERT_TRUE(search);
++    for (int hit = 0; hit < expected_hits; ++hit) {
++      SCOPED_TRACE(hit);
++      ASSERT_TRUE(FPDFText_FindNext(search.get()));
++      const int index = FPDFText_GetSchResultIndex(search.get());
++      ASSERT_GE(index, 0);
++      ASSERT_LE(index + match_length, count);
++      EXPECT_EQ(match_length, FPDFText_GetSchCount(search.get()));
++      unsigned short matched[3] = {};
++      EXPECT_EQ(match_length + 1, FPDFText_GetText(text_page.get(), index,
++                                                   match_length, matched));
++      EXPECT_EQ(expected, GetPlatformWString(matched));
++    }
++    EXPECT_FALSE(FPDFText_FindNext(search.get()));
++  }
++}
+diff --git a/testing/resources/actualtext_rtl_units.in b/testing/resources/actualtext_rtl_units.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..9cb11a7867b7daaa29557c61205e45bb818d57f3
+--- /dev/null
++++ b/testing/resources/actualtext_rtl_units.in
+@@ -0,0 +1,129 @@
++{{header}}
++% Authored Type 3 boxes, not an embedded or substituted Arabic font.
++% Every glyph advances 10 PDF points at size 20, with ink [0 0 500 800].
++% Page 0, y=150: increasing x=20,30,40,50,60 paints:
++%   [ActualText SHEEN], ordinary YA, AIN, LAM, LAM.
++% ActualText <0634> overrides code 01's <06340651064D>; the source marks must
++% not leak into extraction. Reverse the source units to obtain LAM LAM AIN YA
++% SHEEN, including moving the single-character replacement to the word's end.
++% This is the minimal mixed-provenance pattern of the UNDP word, not a
++% whole-word ActualText replacement or a paragraph-direction inference.
++% Page 1, y=150: increasing x paints ordinary MIM, BEH at x=20,30, then ONE
++% ActualText occurrence <064406440639064A0634> covering five boxes at x=40..80.
++% Reverse source units, retaining that replacement's logical interior:
++%   LAM LAM AIN YA SHEEN BEH MIM.
++% This is the ordinary-prefix/multi-character-replacement side of 525087036.
++% Each page has an unrelated ordinary MIM at (20,110), excluding the preserved
++% candidate's whole-page single-line semantic helper. There are no spaces or
++% strong LTR characters in either target: both are one contiguous RTL segment.
++{{object 1 0}} <<
++  /Type /Catalog
++  /Pages 2 0 R
++>>
++endobj
++{{object 2 0}} <<
++  /Type /Pages
++  /Count 2
++  /Kids [3 0 R 4 0 R]
++  /MediaBox [0 0 200 200]
++  /Resources << /Font << /F1 7 0 R >> >>
++>>
++endobj
++{{object 3 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 5 0 R
++>>
++endobj
++{{object 4 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 6 0 R
++>>
++endobj
++{{object 5 0}} <<
++  {{streamlen}}
++>>
++stream
++BT
++/F1 20 Tf
++1 0 0 1 20 150 Tm
++/Span << /ActualText <FEFF0634> >> BDC
++<01> Tj
++EMC
++<02030405> Tj
++1 0 0 1 20 110 Tm
++<06> Tj
++ET
++endstream
++endobj
++{{object 6 0}} <<
++  {{streamlen}}
++>>
++stream
++BT
++/F1 20 Tf
++1 0 0 1 20 150 Tm
++<0607> Tj
++/Span << /ActualText <FEFF064406440639064A0634> >> BDC
++<0102030405> Tj
++EMC
++1 0 0 1 20 110 Tm
++<06> Tj
++ET
++endstream
++endobj
++{{object 7 0}} <<
++  /Type /Font
++  /Subtype /Type3
++  /FontBBox [0 0 500 800]
++  /FontMatrix [0.001 0 0 0.001 0 0]
++  /CharProcs << /box 8 0 R >>
++  /Encoding << /Type /Encoding /Differences [1 /box /box /box /box /box /box /box] >>
++  /FirstChar 1
++  /LastChar 7
++  /Widths [500 500 500 500 500 500 500]
++  /Resources << >>
++  /ToUnicode 9 0 R
++>>
++endobj
++{{object 8 0}} <<
++  {{streamlen}}
++>>
++stream
++500 0 0 0 500 800 d1
++0 0 500 800 re f
++endstream
++endobj
++{{object 9 0}} <<
++  {{streamlen}}
++>>
++stream
++/CIDInit /ProcSet findresource begin
++12 dict begin
++begincmap
++/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
++/CMapName /ActualTextRtlUnits def
++/CMapType 2 def
++1 begincodespacerange
++<00> <FF>
++endcodespacerange
++7 beginbfchar
++<01> <06340651064D>
++<02> <064A>
++<03> <0639>
++<04> <0644>
++<05> <0644>
++<06> <0645>
++<07> <0628>
++endbfchar
++endcmap
++CMapName currentdict /CMap defineresource pop
++end
++end
++endstream
++endobj
++{{xref}}
++{{trailer}}
++{{startxref}}
++%%EOF
+diff --git a/testing/resources/arabic_marked_presentation.in b/testing/resources/arabic_marked_presentation.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..6d733975a032a51fa243c519f633194ce934ebad
+--- /dev/null
++++ b/testing/resources/arabic_marked_presentation.in
+@@ -0,0 +1,96 @@
++{{header}}
++% Authored Type 3 boxes, with no ActualText or multi-codepoint ToUnicode mapping.
++% Code 01 is U+FE91 (BEH INITIAL FORM), an ordinary glyph that normalizes to BEH.
++% Code 04 is a separate zero-advance FATHA. [<01> 500 <04>] TJ backs up the
++% 500-unit base advance, giving the base and mark coincident origins.
++% Page 0 is the unmarked control at (100,50).
++% Page 1 repeats the marked cluster at (100,100) and (100,50) to exclude the
++% whole-page single-line helper. Each cluster must extract as BEH FATHA, not
++% FE91 FATHA: structural attachment must not suppress ordinary normalization.
++% Line-break output is deliberately not specified by this fixture.
++{{object 1 0}} << /Type /Catalog /Pages 2 0 R >>
++endobj
++{{object 2 0}} <<
++  /Type /Pages
++  /Count 2
++  /Kids [3 0 R 4 0 R]
++  /MediaBox [0 0 300 200]
++  /Resources << /Font << /F1 7 0 R >> >>
++>>
++endobj
++{{object 3 0}} << /Type /Page /Parent 2 0 R /Contents 5 0 R >>
++endobj
++{{object 4 0}} << /Type /Page /Parent 2 0 R /Contents 6 0 R >>
++endobj
++{{object 5 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 100 50 Tm <01> Tj ET
++endstream
++endobj
++{{object 6 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 100 100 Tm [<01> 500 <04>] TJ ET
++BT /F1 20 Tf 1 0 0 1 100 50 Tm [<01> 500 <04>] TJ ET
++endstream
++endobj
++{{object 7 0}} <<
++  /Type /Font
++  /Subtype /Type3
++  /FontBBox [0 0 2000 1000]
++  /FontMatrix [0.001 0 0 0.001 0 0]
++  /CharProcs << /box 8 0 R /mark 9 0 R >>
++  /Encoding << /Type /Encoding /Differences [1 /box 4 /mark] >>
++  /FirstChar 1
++  /LastChar 4
++  /Widths [500 0 0 0]
++  /Resources << >>
++  /ToUnicode 10 0 R
++>>
++endobj
++{{object 8 0}} <<
++  {{streamlen}}
++>>
++stream
++500 0 0 0 500 800 d1
++0 0 500 800 re f
++endstream
++endobj
++{{object 9 0}} <<
++  {{streamlen}}
++>>
++stream
++0 0 200 900 300 1000 d1
++200 900 100 100 re f
++endstream
++endobj
++{{object 10 0}} <<
++  {{streamlen}}
++>>
++stream
++/CIDInit /ProcSet findresource begin
++12 dict begin
++begincmap
++/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
++/CMapName /ArabicMarkedPresentation def
++/CMapType 2 def
++1 begincodespacerange
++<00> <FF>
++endcodespacerange
++2 beginbfchar
++<01> <FE91>
++<04> <064E>
++endbfchar
++endcmap
++CMapName currentdict /CMap defineresource pop
++end
++end
++endstream
++endobj
++{{xref}}
++{{trailer}}
++{{startxref}}
++%%EOF
+diff --git a/testing/resources/arabic_unit_boundaries.in b/testing/resources/arabic_unit_boundaries.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..0a6f0f0c464bed12451edebf011355182c108c5c
+--- /dev/null
++++ b/testing/resources/arabic_unit_boundaries.in
+@@ -0,0 +1,157 @@
++{{header}}
++% Authored Type 3 boxes; no embedded or substituted publisher font.
++% Page 0: ONE glyph maps to logical BEH SPACE A B C SPACE ( D ).
++% Page 1: ONE ActualText occurrence supplies the identical logical string,
++% overriding a glyph mapped to X. Moving either unit must not mirror the Latin
++% parentheses inside it. This is explicit source text, not paragraph inference.
++% Page 2: separate SEEN (code 01) and FATHA (04), in ONE rotated text object.
++% SEEN advances 500 units; TJ backs up 500; zero-advance FATHA shares its origin.
++% At size 20, both origins are (100,50), with Tm [0 1 -1 0 100 50].
++% Page 3: the same cluster is horizontal at (100,100), plus an unrelated MIM
++% at (100,50) to exclude the whole-page single-line semantic helper. Require
++% SEEN FATHA, never FATHA SEEN; do not turn legacy line-break output into gold.
++% Page 4: ONE glyph maps to BEH NUL TEH. The public printable TEH at index 2
++% must survive. Preserve the existing U+FFFE text sentinel, not literal NUL
++% extraction or a new semantic interpretation of the nonprinting source value.
++{{object 1 0}} <<
++  /Type /Catalog
++  /Pages 2 0 R
++>>
++endobj
++{{object 2 0}} <<
++  /Type /Pages
++  /Count 5
++  /Kids [3 0 R 4 0 R 5 0 R 6 0 R 7 0 R]
++  /MediaBox [0 0 300 200]
++  /Resources << /Font << /F1 13 0 R >> >>
++>>
++endobj
++{{object 3 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 8 0 R
++>>
++endobj
++{{object 4 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 9 0 R
++>>
++endobj
++{{object 5 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 10 0 R
++>>
++endobj
++{{object 6 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 11 0 R
++>>
++endobj
++{{object 7 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 12 0 R
++>>
++endobj
++{{object 8 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 20 50 Tm <02> Tj ET
++endstream
++endobj
++{{object 9 0}} <<
++  {{streamlen}}
++>>
++stream
++/Span << /ActualText <FEFF062800200041004200430020002800440029> >> BDC
++BT /F1 20 Tf 1 0 0 1 20 50 Tm <03> Tj ET
++EMC
++endstream
++endobj
++{{object 10 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 0 1 -1 0 100 50 Tm [<01> 500 <04>] TJ ET
++endstream
++endobj
++{{object 11 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 100 100 Tm [<01> 500 <04>] TJ ET
++BT /F1 20 Tf 1 0 0 1 100 50 Tm <06> Tj ET
++endstream
++endobj
++{{object 12 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 20 50 Tm <05> Tj ET
++endstream
++endobj
++{{object 13 0}} <<
++  /Type /Font
++  /Subtype /Type3
++  /FontBBox [0 0 2000 1000]
++  /FontMatrix [0.001 0 0 0.001 0 0]
++  /CharProcs << /box 14 0 R /mark 15 0 R >>
++  /Encoding << /Type /Encoding /Differences [1 /box /box /box /mark /box /box] >>
++  /FirstChar 1
++  /LastChar 6
++  /Widths [500 500 500 0 500 500]
++  /Resources << >>
++  /ToUnicode 16 0 R
++>>
++endobj
++{{object 14 0}} <<
++  {{streamlen}}
++>>
++stream
++500 0 0 0 500 800 d1
++0 0 500 800 re f
++endstream
++endobj
++{{object 15 0}} <<
++  {{streamlen}}
++>>
++stream
++0 0 200 900 300 1000 d1
++200 900 100 100 re f
++endstream
++endobj
++{{object 16 0}} <<
++  {{streamlen}}
++>>
++stream
++/CIDInit /ProcSet findresource begin
++12 dict begin
++begincmap
++/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
++/CMapName /ArabicUnitBoundaries def
++/CMapType 2 def
++1 begincodespacerange
++<00> <FF>
++endcodespacerange
++6 beginbfchar
++<01> <0633>
++<02> <062800200041004200430020002800440029>
++<03> <0058>
++<04> <064E>
++<05> <06280000062A>
++<06> <0645>
++endbfchar
++endcmap
++CMapName currentdict /CMap defineresource pop
++end
++end
++endstream
++endobj
++{{xref}}
++{{trailer}}
++{{startxref}}
++%%EOF

@@ -7,10 +7,12 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.pdf.PDF
 import com.gitlab.mudlej.MjPdfReader.pdf.SearchResult
 import com.gitlab.mudlej.MjPdfReader.pdf.PdfExtractor
 import com.gitlab.mudlej.MjPdfReader.core.text.accentInsensitiveRanges
+import com.gitlab.mudlej.MjPdfReader.core.debug.SearchTestHooks
 import com.gitlab.mudlej.MjPdfReader.pdf.createPdfExtractor
 import com.gitlab.mudlej.MjPdfReader.core.text.indexesOf
 import kotlinx.coroutines.CancellationException
@@ -44,8 +46,46 @@ object SearchCoordinator {
         @Volatile var pageCount = 0
     }
 
+    data class DebugProgress(
+        val fileHash: String?,
+        val query: String,
+        val ignoreAccents: Boolean,
+        val pagesScanned: Int,
+        val pageCount: Int,
+        val finished: Boolean,
+    )
+
     private val mainHandler = Handler(Looper.getMainLooper())
     private var active: ActiveSearch? = null
+
+    @Volatile
+    private var lastFinished: DebugProgress? = null
+
+    @Synchronized
+    fun debugProgress(): DebugProgress? {
+        if (!BuildConfig.DEBUG) {
+            return null
+        }
+        val current = active ?: return lastFinished
+        return debugSnapshotOf(current)
+    }
+
+    @Synchronized
+    fun clearDebugProgress() {
+        if (!BuildConfig.DEBUG) {
+            return
+        }
+        lastFinished = null
+    }
+
+    private fun debugSnapshotOf(search: ActiveSearch) = DebugProgress(
+        fileHash = search.key.fileHash,
+        query = search.key.query,
+        ignoreAccents = search.key.ignoreAccents,
+        pagesScanned = search.pagesScanned,
+        pageCount = search.pageCount,
+        finished = search.finished,
+    )
 
     @Synchronized
     fun startOrSubscribe(
@@ -68,6 +108,10 @@ object SearchCoordinator {
         val search = ActiveSearch(key)
         search.listeners.add(listener)
         active = search
+        if (BuildConfig.DEBUG) {
+            SearchTestHooks.noteSearchStarted()
+            lastFinished = null
+        }
         val appContext = activity.applicationContext
         search.scope.launch { runSearch(search, appContext, pdfPath, password) }
     }
@@ -96,6 +140,9 @@ object SearchCoordinator {
         current.scope.cancel()
         current.listeners.clear()
         active = null
+        if (BuildConfig.DEBUG) {
+            lastFinished = null
+        }
     }
 
     private fun attachTo(search: ActiveSearch, listener: Listener) {
@@ -137,13 +184,18 @@ object SearchCoordinator {
                     }
                 }
                 search.pagesScanned = pageNumber
+                SearchTestHooks.notePageScanned(search.key.fileHash, search.key.query, pageNumber)
                 publishProgress(search, pageNumber, pageCount)
                 val isBatchBoundary = pageNumber % SEARCH_BATCH_PAGES == 0 || pageNumber == pageCount
                 if (isBatchBoundary && results.size > lastPublishedCount) {
                     lastPublishedCount = results.size
                     publishResults(search, results.toList(), finished = false)
+                    if (BuildConfig.DEBUG) {
+                        SearchTestHooks.blockIfResultBatchRequested()
+                    }
                 }
             }
+            SearchTestHooks.noteSearchCompleted()
             SearchSessionCache.put(search.key.fileHash, search.key.query, search.key.ignoreAccents, cacheHits(results))
             finish(search, results.toList())
         } catch (throwable: Throwable) {
@@ -172,6 +224,9 @@ object SearchCoordinator {
         publishResults(search, results, finished = true)
         mainHandler.post { search.listeners.clear() }
         synchronized(this) {
+            if (BuildConfig.DEBUG) {
+                lastFinished = debugSnapshotOf(search)
+            }
             if (active === search) {
                 active = null
             }

@@ -1,3 +1,5 @@
+* 3.2.0
+  * Recent keeps permission-blocked history visibly unavailable and removes it after restored access proves it unavailable.
 * 3.1.0
   * A correctness and stability release. A few new reading options, much safer saving and backups, and a long list of fixes.
   * New:

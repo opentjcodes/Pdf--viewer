@@ -11,8 +11,10 @@ import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import androidx.annotation.MainThread
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.recyclerview.widget.RecyclerView
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
 import com.gitlab.mudlej.MjPdfReader.databinding.TextModePageItemBinding
 import com.gitlab.mudlej.MjPdfReader.core.io.plainTextShareIntent
@@ -77,6 +79,27 @@ class TextModePageViewHolder(
                 binding.pageMessage.isClickable = false
             }
         }
+    }
+
+    @MainThread
+    fun debugSnapshot(position: Int): TextModePageSnapshot? {
+        if (!BuildConfig.DEBUG) {
+            return null
+        }
+        return TextModePageSnapshot(
+            position = position,
+            pageText = binding.pageText.text,
+            pageTextVisible = binding.pageText.visibility == View.VISIBLE,
+            textSizePx = binding.pageText.textSize,
+            lineSpacingMultiplier = binding.pageText.lineSpacingMultiplier,
+            typeface = binding.pageText.typeface,
+            containerPaddingLeft = binding.pageContainer.paddingLeft,
+            containerPaddingTop = binding.pageContainer.paddingTop,
+            containerPaddingRight = binding.pageContainer.paddingRight,
+            containerPaddingBottom = binding.pageContainer.paddingBottom,
+            containerMeasuredWidth = binding.pageContainer.measuredWidth,
+            paragraphDirection = binding.pageText.layout?.getParagraphDirection(0) ?: 0,
+        )
     }
 
     private fun selectionActionModeCallback(): ActionMode.Callback {

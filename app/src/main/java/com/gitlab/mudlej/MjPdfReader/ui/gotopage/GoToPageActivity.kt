@@ -16,6 +16,7 @@ import com.gitlab.mudlej.MjPdfReader.R
 import com.gitlab.mudlej.MjPdfReader.core.ui.setupScreenChrome
 import com.gitlab.mudlej.MjPdfReader.core.ui.applyIncognitoNightModeFromIntent
 import com.gitlab.mudlej.MjPdfReader.core.ui.applyIncognitoOverlayFromIntent
+import com.gitlab.mudlej.MjPdfReader.core.ui.toast
 import com.gitlab.mudlej.MjPdfReader.data.Preferences
 import com.gitlab.mudlej.MjPdfReader.databinding.ActivityGoToPageBinding
 import com.gitlab.mudlej.MjPdfReader.pdf.PDF
@@ -59,7 +60,7 @@ class GoToPageActivity : AppCompatActivity() {
             pageCount = cache.pageCount()
             binding.progressBar.visibility = View.GONE
             if (pageCount <= 0) {
-                Toast.makeText(this@GoToPageActivity, getString(R.string.failed_to_load_pages), Toast.LENGTH_LONG).show()
+                toast(this@GoToPageActivity, getString(R.string.failed_to_load_pages), Toast.LENGTH_LONG)
                 finish()
                 return@launch
             }
@@ -147,6 +148,7 @@ class GoToPageActivity : AppCompatActivity() {
         }
         return super.onOptionsItemSelected(item)
     }
+
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)

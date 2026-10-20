@@ -546,7 +546,6 @@
     <string name="dracula">Dracula</string>
     <string name="text_size">Tekstgrootte</string>
     <string name="go_to_page">Ga naar pagina</string>
-    <string name="no_input">Geen invoer!</string>
     <string name="go_to">Ga naar</string>
     <string name="all_pages">Alle pagina\'s</string>
     <string name="grid_columns">Kolommen</string>
@@ -662,6 +661,7 @@
     <string name="home_scan_locations_save">Opslaan</string>
     <string name="home_scan_locations_up">Omhoog</string>
     <string name="home_menu_scan_locations">Scanlocaties</string>
+    <string name="home_menu_full_rescan">Volledig opnieuw scannen</string>
     <string name="home_search_hint">Doorzoek je bibliotheek</string>
     <string name="home_tab_recent">Recent</string>
     <string name="home_tab_library">Bibliotheek</string>
@@ -683,7 +683,9 @@
     <string name="home_chip_abandoned">Gestaakt</string>
     <string name="home_chip_all_files">Alle bestanden</string>
     <string name="home_hero_progress_template">%1$d%% · %2$d/%3$d</string>
-    <string name="home_scanning_progress">Scannen… %1$d PDF\'s gevonden</string>
+    <string name="home_scan_finding">PDF\'s zoeken… %1$d gevonden</string>
+    <string name="home_scan_reading_details">PDF-details lezen… %1$d van %2$d</string>
+    <string name="home_scan_incomplete">Scan onvolledig… %1$d PDF\'s gevonden</string>
     <string name="home_menu_title">Bibliotheekmenu</string>
     <string name="home_menu_view">Weergave</string>
     <string name="home_menu_stats">Bibliotheekstatistieken</string>
@@ -888,7 +890,7 @@
     <string name="auto_backup_failure_notice">De laatste automatische back-up is mislukt.</string>
     <string name="auto_backup_stale_notice">De automatische back-up is al meer dan een dag niet uitgevoerd.</string>
     <string name="auto_backup_notice_action">Back-upinstellingen</string>
-    <string name="home_recent_permission_message">Je boeken hebben toegang tot bestanden nodig om weer te openen. Sta toegang toe om ze te ontgrendelen.</string>
+    <string name="home_recent_permission_message">Sommige recente documenten kunnen niet worden gecontroleerd zonder bestandstoegang. Sta toegang toe zodat MJ PDF ze kan controleren en openen als ze nog beschikbaar zijn.</string>
     <string name="home_list_badges_title">Badges op lijstkaarten</string>
     <string name="home_list_badges_summary">Kies welke details onder bestandsnamen worden getoond in lijstweergave.</string>
     <string name="home_badge_pages">Aantal pagina\'s</string>

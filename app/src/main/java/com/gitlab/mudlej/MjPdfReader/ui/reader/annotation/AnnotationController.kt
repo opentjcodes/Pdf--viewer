@@ -4,9 +4,12 @@ package com.gitlab.mudlej.MjPdfReader.ui.reader.annotation
 
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
 import com.github.barteksc.pdfviewer.PDFView
+import com.github.barteksc.pdfviewer.ReplayMeasurement
 import com.github.barteksc.pdfviewer.preview.TagSource
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.data.HistoryPolicy
 import com.gitlab.mudlej.MjPdfReader.data.annotation.AnnotationEdit
 import com.gitlab.mudlej.MjPdfReader.data.annotation.AnnotationJournal
@@ -50,6 +53,8 @@ class AnnotationController(
 
     fun clearDirty() {
         vm.hasUnsavedAnnotations = false
+        vm.hasRecoverableUnsavedAnnotations = false
+        vm.hasUnrecoverableUnsavedAnnotations = false
     }
 
     fun setSaving(saving: Boolean) {
@@ -61,6 +66,9 @@ class AnnotationController(
         applyContentTag(edit)
         if (historyPolicy.canRecord()) {
             journal.append(uri, edit)
+            vm.hasRecoverableUnsavedAnnotations = true
+        } else {
+            vm.hasUnrecoverableUnsavedAnnotations = true
         }
         vm.sessionOwnedAnnotationKeys.add(SourceKey.of(uri))
         vm.hasUnsavedAnnotations = true
@@ -104,6 +112,15 @@ class AnnotationController(
             pageContentTags.clear()
         }
         vm.hasUnsavedAnnotations = false
+        vm.hasRecoverableUnsavedAnnotations = false
+        vm.hasUnrecoverableUnsavedAnnotations = false
+    }
+
+    fun discardUnrecoverableDirtyState() {
+        vm.hasUnrecoverableUnsavedAnnotations = false
+        if (!vm.hasRecoverableUnsavedAnnotations) {
+            vm.hasUnsavedAnnotations = false
+        }
     }
 
     suspend fun replayJournal(): Boolean {
@@ -113,12 +130,51 @@ class AnnotationController(
             return false
         }
         withContext(Dispatchers.Main) {
-            pageContentTags.clear()
-            edits.forEach(::applyEdit)
+            if (BuildConfig.DEBUG && PDFView.isDebugStateEnabled()) {
+                replayMeasuredEdits(edits)
+            } else {
+                pageContentTags.clear()
+                edits.forEach(::applyEdit)
+            }
         }
         markSessionOwned(uri)
         vm.hasUnsavedAnnotations = true
+        vm.hasRecoverableUnsavedAnnotations = true
         return true
+    }
+
+    private fun replayMeasuredEdits(edits: List<AnnotationEdit>) {
+        val measurement = ReplayMeasurement.start(SystemClock.elapsedRealtimeNanos(), edits.size)
+        val replayStartNanos = SystemClock.elapsedRealtimeNanos()
+        var replayReturned = false
+        try {
+            pageContentTags.clear()
+            edits.forEachIndexed { index, edit ->
+                applyMeasuredEdit(edit, index, measurement)
+            }
+            replayReturned = true
+        } finally {
+            val durationNanos = SystemClock.elapsedRealtimeNanos() - replayStartNanos
+            val report = ReplayMeasurement.finish(
+                measurement,
+                durationNanos,
+                replayReturned,
+            )
+            report.lines().forEach { line -> Log.i(ReplayMeasurement.LOG_TAG, line) }
+        }
+    }
+
+    private fun applyMeasuredEdit(edit: AnnotationEdit, index: Int, measurement: ReplayMeasurement.Session) {
+        measurement.beginEdit(index, edit.javaClass.simpleName, edit.page)
+        val editStartNanos = SystemClock.elapsedRealtimeNanos()
+        var editReturned = false
+        try {
+            applyEdit(edit)
+            editReturned = true
+        } finally {
+            val durationNanos = SystemClock.elapsedRealtimeNanos() - editStartNanos
+            measurement.endEdit(index, durationNanos, editReturned)
+        }
     }
 
     private fun applyEdit(edit: AnnotationEdit) {

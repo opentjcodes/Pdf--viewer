@@ -1,0 +1,1635 @@
+diff --git a/core/fpdftext/BUILD.gn b/core/fpdftext/BUILD.gn
+index cea247e6b5fe5dad5197aa47d2c47eaba60cad33..f2a315c7c8db72e587c3eb6ee64dc1379a8ed32e 100644
+--- a/core/fpdftext/BUILD.gn
++++ b/core/fpdftext/BUILD.gn
+@@ -11,6 +11,7 @@ source_set("fpdftext") {
+     "cpdf_linkextract.h",
+     "cpdf_textpage.cpp",
+     "cpdf_textpage.h",
++    "cpdf_textpage_semantic.cpp",
+     "cpdf_textpagefind.cpp",
+     "cpdf_textpagefind.h",
+     "unicodenormalizationdata.cpp",
+diff --git a/core/fpdftext/cpdf_textpage.cpp b/core/fpdftext/cpdf_textpage.cpp
+index 411646e65dbfff8620d1378e151359bbc3548357..0b6e8e00ce2384eefbc673b6725f0fc067805dc5 100644
+--- a/core/fpdftext/cpdf_textpage.cpp
++++ b/core/fpdftext/cpdf_textpage.cpp
+@@ -11,6 +11,7 @@
+ 
+ #include <algorithm>
+ #include <array>
++#include <limits>
+ #include <utility>
+ #include <vector>
+ 
+@@ -802,6 +803,7 @@ void CPDF_TextPage::ProcessObject() {
+   ProcessTransformedTextObjects();
+   text_objects_.clear();
+   CloseTempLine();
++  TryProcessSemanticRtl();
+ }
+ 
+ void CPDF_TextPage::ProcessFormObject(CPDF_FormObject* form_obj,
+@@ -878,10 +880,145 @@ void CPDF_TextPage::CloseTempLine() {
+     }
+     prev_char_is_space = true;
+   }
+-  CFX_BidiString bidi(str, /*auto_order=*/false);
+-  if (rtl_) {
++  // Infer an unambiguously RTL visual line, but preserve the default direction
++  // for mixed-language lines and logical ActualText replacements.
++  const bool has_actual_text = std::ranges::any_of(
++      temp_char_list_, [](const CharInfo& info) {
++        return info.char_type() == CharType::kActualText;
++      });
++  const bool has_strong_ltr = std::ranges::any_of(str.span(), [](wchar_t wc) {
++    return pdfium::unicode::GetBidiClass(wc) == BidiClass::kL;
++  });
++  const bool has_strong_rtl = std::ranges::any_of(str.span(), [](wchar_t wc) {
++    const BidiClass direction = pdfium::unicode::GetBidiClass(wc);
++    return direction == BidiClass::kR || direction == BidiClass::kAL;
++  });
++  const bool is_horizontal = std::ranges::all_of(
++      temp_char_list_, [](const CharInfo& info) {
++        return fabs(info.matrix().b) < kSizeEpsilon &&
++               fabs(info.matrix().c) < kSizeEpsilon;
++      });
++  const bool unattached_mark = std::ranges::any_of(
++      temp_char_list_, [](const CharInfo& info) {
++        return !info.logical_unit() &&
++               pdfium::unicode::GetBidiClass(info.unicode()) == BidiClass::kNSM;
++      });
++  const bool infer_rtl = !has_actual_text && !has_strong_ltr && is_horizontal;
++  CFX_BidiString bidi(str, /*auto_order=*/infer_rtl && !unattached_mark);
++  // Document reading direction does not reverse an entirely Latin URL/citation.
++  if (rtl_ && (!has_strong_ltr || has_strong_rtl || unattached_mark)) {
+     bidi.SetOverallDirectionRight();
+   }
++  const auto is_mark = [](wchar_t wc) {
++    if (pdfium::unicode::GetBidiClass(wc) == BidiClass::kNSM) {
++      return true;
++    }
++    // Arabic presentation ligatures can encode only marks despite having an
++    // RTL letter bidi class (for example SHADDA WITH KASRA, U+FC62).
++    const auto normalized = GetUnicodeNormalization(wc);
++    return !normalized.empty() &&
++           std::ranges::all_of(normalized, [](wchar_t c) {
++             return pdfium::unicode::GetBidiClass(c) == BidiClass::kNSM;
++           });
++  };
++  // Unresolved marks prevent guessing glyph order inside a word, not reading
++  // ordinary RTL words right-to-left. Keep logical payloads and weak islands
++  // (e.g. space-separated numbers) intact, and retain each block's old traversal.
++  bool reorder_words = infer_rtl && unattached_mark && !rtl_ &&
++      std::ranges::all_of(temp_char_list_, [](const CharInfo& info) {
++        return info.matrix().a > 0 && info.matrix().d > 0;
++      }) &&
++      std::ranges::any_of(str.span(), [&](wchar_t wc) {
++        const BidiClass direction = pdfium::unicode::GetBidiClass(wc);
++        return (direction == BidiClass::kR || direction == BidiClass::kAL) &&
++               !is_mark(wc);
++      });
++  std::vector<size_t> word_index;
++  std::vector<std::pair<size_t, size_t>> word_ranges;
++  std::vector<std::vector<std::pair<size_t, bool>>> word_order;
++  if (reorder_words) {
++    struct Block {
++      size_t start;
++      size_t count;
++      bool separator;
++      bool rtl;
++    };
++    std::vector<Block> blocks;
++    const auto is_separator = [&](size_t index) {
++      return str[index] == L' ' && !temp_char_list_[index].logical_unit();
++    };
++    for (size_t start = 0; start < str.GetLength();) {
++      const bool separator = is_separator(start);
++      size_t end = start + 1;
++      while (end < str.GetLength() && is_separator(end) == separator) {
++        ++end;
++      }
++      const bool has_rtl = std::ranges::any_of(
++          str.span().subspan(start, end - start), [&](wchar_t wc) {
++            const BidiClass direction = pdfium::unicode::GetBidiClass(wc);
++            return (direction == BidiClass::kR || direction == BidiClass::kAL) &&
++                   !is_mark(wc);
++          });
++      if (!separator && !has_rtl && blocks.size() >= 2 &&
++          blocks.back().separator && !blocks[blocks.size() - 2].rtl) {
++        blocks.pop_back();
++        blocks.back().count = end - blocks.back().start;
++      } else {
++        blocks.push_back({start, end - start, separator, has_rtl});
++      }
++      start = end;
++    }
++    // A text-showing run may already list logical words at decreasing X.
++    // Only reorder separated visual-order blocks on one measured baseline.
++    size_t positioned_blocks = 0;
++    float previous_right = 0;
++    std::optional<float> baseline;
++    for (const auto& block : blocks) {
++      float left = std::numeric_limits<float>::infinity();
++      float right = -std::numeric_limits<float>::infinity();
++      for (size_t i = block.start; i < block.start + block.count; ++i) {
++        const BidiClass direction = pdfium::unicode::GetBidiClass(str[i]);
++        if (direction != BidiClass::kR && direction != BidiClass::kAL &&
++            direction != BidiClass::kEN && direction != BidiClass::kAN) {
++          continue;
++        }
++        if (is_mark(str[i])) {
++          continue;
++        }
++        const CFX_PointF& origin = temp_char_list_[i].origin();
++        if (!std::isfinite(origin.x) || !std::isfinite(origin.y) ||
++            (baseline && fabs(origin.y - *baseline) > kSizeEpsilon)) {
++          reorder_words = false;
++          break;
++        }
++        if (!baseline) {
++          baseline = origin.y;
++        }
++        left = std::min(left, origin.x);
++        right = std::max(right, origin.x);
++      }
++      if (!reorder_words) {
++        break;
++      }
++      if (left <= right) {
++        if (positioned_blocks && left <= previous_right + kSizeEpsilon) {
++          reorder_words = false;
++          break;
++        }
++        previous_right = right;
++        ++positioned_blocks;
++      }
++    }
++    reorder_words &= positioned_blocks >= 2;
++    if (reorder_words) {
++      word_index.resize(str.GetLength());
++      word_order.resize(blocks.size());
++      for (size_t i = 0; i < blocks.size(); ++i) {
++        std::fill_n(word_index.begin() + blocks[i].start, blocks[i].count, i);
++        word_ranges.emplace_back(blocks[i].start, blocks[i].count);
++      }
++    }
++  }
+   // Bidi may move glyphs/replacement occurrences, but must not reverse or split
+   // the logical Unicode sequence inside a ToUnicode mapping or ActualText span.
+   std::map<uint32_t, std::vector<size_t>> mappings;
+@@ -912,7 +1049,11 @@ void CPDF_TextPage::CloseTempLine() {
+     mappings.erase(mapping);
+   };
+   const auto emit = [&](size_t index, bool is_rtl) {
+-    add_character(str[index], temp_char_list_[index], is_rtl);
++    if (reorder_words) {
++      word_order[word_index[index]].emplace_back(index, is_rtl);
++    } else {
++      add_character(str[index], temp_char_list_[index], is_rtl);
++    }
+   };
+   const auto visit = [&](const CFX_BidiString& order, size_t offset,
+                          auto&& visit_character) {
+@@ -936,6 +1077,28 @@ void CPDF_TextPage::CloseTempLine() {
+     }
+   };
+   visit(bidi, 0, emit);
++  for (size_t i = word_order.size(); i > 0; --i) {
++    const auto [start, count] = word_ranges[i - 1];
++    const bool orphan = std::ranges::any_of(
++        pdfium::span(temp_char_list_).subspan(start, count),
++        [&](const CharInfo& info) {
++          return !info.logical_unit() && is_mark(info.unicode());
++        });
++    WideString word_text(str.c_str() + start, count);
++    CFX_BidiString word(word_text, /*auto_order=*/true);
++    if (!orphan &&
++        word.OverallDirection() == CFX_BidiChar::Direction::kRight) {
++      // An unrelated orphan must not leave punctuation on the visual side of
++      // a fully resolved word. Use the existing RTL traversal for that word.
++      visit(word, start, [&](size_t index, bool is_rtl) {
++        add_character(str[index], temp_char_list_[index], is_rtl);
++      });
++      continue;
++    }
++    for (const auto& [index, is_rtl] : word_order[i - 1]) {
++      add_character(str[index], temp_char_list_[index], is_rtl);
++    }
++  }
+   temp_char_list_.clear();
+   temp_text_buf_.Delete(0, temp_text_buf_.GetLength());
+ }
+diff --git a/core/fpdftext/cpdf_textpage.h b/core/fpdftext/cpdf_textpage.h
+index cf58ceb17e36f475a32fdd46558ff4475ae31cfb..8de7102d9a32ce6e7e15bd066ba08aa0d35511c4 100644
+--- a/core/fpdftext/cpdf_textpage.h
++++ b/core/fpdftext/cpdf_textpage.h
+@@ -156,6 +156,7 @@ class CPDF_TextPage {
+                                size_t form_occurrence,
+                                size_t& next_form_occurrence);
+   void ProcessObject();
++  bool TryProcessSemanticRtl();
+   void ProcessFormObject(CPDF_FormObject* form_obj,
+                          const CFX_Matrix& form_matrix);
+   void ProcessTextObject(CPDF_TextObject* text_obj,
+diff --git a/core/fpdftext/cpdf_textpage_semantic.cpp b/core/fpdftext/cpdf_textpage_semantic.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..551cdb90ba2394e633e6f3497da9f25169d985e8
+--- /dev/null
++++ b/core/fpdftext/cpdf_textpage_semantic.cpp
+@@ -0,0 +1,729 @@
++// Copyright 2026 The PDFium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "core/fpdftext/cpdf_textpage.h"
++
++#include <algorithm>
++#include <cmath>
++#include <map>
++#include <numeric>
++#include <optional>
++#include <string>
++#include <utility>
++#include <vector>
++
++#include "core/fpdfapi/font/cpdf_font.h"
++#include "core/fpdfapi/page/cpdf_contentmarks.h"
++#include "core/fpdfapi/page/cpdf_form.h"
++#include "core/fpdfapi/page/cpdf_formobject.h"
++#include "core/fpdfapi/page/cpdf_page.h"
++#include "core/fpdfapi/page/cpdf_textobject.h"
++#include "core/fpdfapi/parser/cpdf_dictionary.h"
++#include "core/fpdfapi/parser/cpdf_string.h"
++#include "core/fxcrt/cfx_bidi_resolver.h"
++#include "core/fxcrt/fx_unicode.h"
++
++namespace {
++
++enum class UnitDirection { kRight, kLeft, kNumber, kNeutral, kSpace, kMark };
++
++struct SemanticUnit {
++  float Center() const { return left / 2 + right / 2; }
++
++  WideString text;
++  std::vector<CPDF_TextPage::CharInfo> chars;
++  std::vector<CPDF_TextPage::CharInfo> replacement_sources;
++  UnitDirection direction = UnitDirection::kNeutral;
++  CFX_FloatRect ink;
++  CFX_PointF origin;
++  CFX_Matrix matrix;
++  UnownedPtr<CPDF_TextObject> object;
++  float left = 0;
++  float right = 0;
++  float em = 0;
++  float space_width = 0;
++  size_t invocation = 0;
++  size_t source_index = 0;
++  bool actual_text = false;
++  bool has_base = false;
++};
++
++std::optional<UnitDirection> Classify(WideStringView text) {
++  if (text.IsEmpty()) {
++    return std::nullopt;
++  }
++  bool right = false;
++  bool left = false;
++  bool number = false;
++  bool all_marks = true;
++  bool all_spaces = true;
++  for (wchar_t c : text) {
++    // This bounded path does not interpret bidi controls, surrogate code units,
++    // presentation-form normalization, or non-printing extraction sentinels.
++    if (c < 0x20 || (c >= 0x7f && c <= 0x9f) || c == 0x061c ||
++        (c >= 0x200b && c <= 0x200f) || (c >= 0x2028 && c <= 0x202e) ||
++        (c >= 0x2060 && c <= 0x206f) || (c >= 0xd800 && c <= 0xdfff) ||
++        (c >= 0xfb00 && c <= 0xfdff) || c >= 0xfe70) {
++      return std::nullopt;
++    }
++    const BidiClass bidi = pdfium::unicode::GetBidiClass(c);
++    if (bidi == BidiClass::kBN) {
++      return std::nullopt;
++    }
++    right |= bidi == BidiClass::kR || bidi == BidiClass::kAL;
++    left |= bidi == BidiClass::kL;
++    number |= bidi == BidiClass::kAN || bidi == BidiClass::kEN;
++    all_marks &= bidi == BidiClass::kNSM;
++    all_spaces &= c == L' ';
++  }
++  if (right && (left || number)) {
++    return std::nullopt;
++  }
++  if (all_marks) {
++    return UnitDirection::kMark;
++  }
++  if (all_spaces) {
++    return UnitDirection::kSpace;
++  }
++  if (right) {
++    return UnitDirection::kRight;
++  }
++  if (left) {
++    return UnitDirection::kLeft;
++  }
++  return number ? UnitDirection::kNumber : UnitDirection::kNeutral;
++}
++
++bool IsIslandMember(UnitDirection direction) {
++  return direction == UnitDirection::kLeft ||
++         direction == UnitDirection::kNumber;
++}
++
++}  // namespace
++
++bool CPDF_TextPage::TryProcessSemanticRtl() {
++  // Repair one horizontal line only after legacy extraction has completed.
++  // Rejection preserves its output, previous-object state and occurrence sets.
++  constexpr size_t kMaxUnits = 4096;
++  constexpr size_t kMaxCharacters = 16384;
++  constexpr size_t kSeparatorOwner = 2 * kMaxUnits;
++  if (char_list_.empty() || char_list_.size() > kMaxCharacters) {
++    return false;
++  }
++  std::vector<SemanticUnit> units;
++  std::map<std::pair<size_t, const CPDF_ContentMarkItem*>, size_t> occurrences;
++  size_t next_invocation = 0;
++  size_t character_count = 0;
++  size_t glyph_count = 0;
++  bool complex = false;
++
++  const auto collect = [&](auto&& self, const CPDF_PageObjectHolder* holder,
++                           const CFX_Matrix& form_matrix, size_t invocation,
++                           size_t depth) -> bool {
++    if (depth > 32) {
++      return false;
++    }
++    for (const auto& page_object : *holder) {
++      if (!page_object->IsActive()) {
++        continue;
++      }
++      const CPDF_ContentMarks* marks = page_object->GetContentMarks();
++      const CPDF_ContentMarkItem* replacement_item = nullptr;
++      WideString replacement;
++      for (size_t i = 0; i < marks->CountItems(); ++i) {
++        const CPDF_ContentMarkItem* mark = marks->GetItem(i);
++        RetainPtr<const CPDF_Dictionary> dict = mark->GetParam();
++        RetainPtr<const CPDF_String> value =
++            dict ? dict->GetStringFor("ActualText") : nullptr;
++        if (!value) {
++          continue;
++        }
++        if (replacement_item) {
++          return false;
++        }
++        replacement_item = mark;
++        replacement = value->GetUnicodeText();
++      }
++      if (page_object->IsForm()) {
++        // Replacement on the invocation itself needs inherited coverage, not
++        // merely the child marks. Leave that case to the existing processor.
++        if (replacement_item) {
++          return false;
++        }
++        CPDF_FormObject* form = page_object->AsForm();
++        if (!self(self, form->form(), form->form_matrix() * form_matrix,
++                  ++next_invocation, depth + 1)) {
++          return false;
++        }
++        continue;
++      }
++      if (!page_object->IsText()) {
++        if (replacement_item) {
++          return false;
++        }
++        continue;
++      }
++      CPDF_TextObject* object = page_object->AsText();
++      const RetainPtr<CPDF_Font> font = object->GetFont();
++      const CFX_Matrix matrix = object->GetTextMatrix() * form_matrix;
++      const float em = std::fabs(object->GetFontSize() * matrix.d);
++      if (!font || font->IsVertWriting() || !std::isfinite(em) || em < 0.01f ||
++          !std::isfinite(matrix.a) || !std::isfinite(matrix.b) ||
++          !std::isfinite(matrix.c) || matrix.a <= 0 ||
++          std::fabs(matrix.b) > matrix.a * 0.001f ||
++          std::fabs(matrix.c) > std::fabs(matrix.d) * 0.001f ||
++          object->GetTextRenderMode() != TextRenderingMode::MODE_FILL) {
++        return false;
++      }
++      const uint32_t space_code = font->CharCodeFromUnicode(L' ');
++      const float space_width =
++          font->CPDF_Font::UnicodeFromCharCode(space_code) == L" "
++              ? std::fabs(matrix.a * object->GetCharWidth(space_code))
++              : 0;
++      if (!std::isfinite(space_width)) {
++        return false;
++      }
++      std::optional<size_t> replacement_index;
++      if (replacement_item) {
++        if (replacement.GetLength() > kMaxCharacters - character_count) {
++          return false;
++        }
++        const auto direction = Classify(replacement.AsStringView());
++        if (!direction) {
++          return false;
++        }
++        const auto [it, inserted] = occurrences.emplace(
++            std::make_pair(invocation, replacement_item), units.size());
++        replacement_index = it->second;
++        if (inserted) {
++          SemanticUnit unit;
++          unit.text = replacement;
++          unit.direction = *direction;
++          unit.actual_text = true;
++          unit.invocation = invocation;
++          units.push_back(std::move(unit));
++          character_count += replacement.GetLength();
++          complex = true;
++        }
++        // Legacy replacement records may reference any covered text object,
++        // not the source-first object. The occurrence map scopes these
++        // witnesses by mark identity and invocation; the matrix disambiguates
++        // placement.
++        units[*replacement_index].replacement_sources.emplace_back(
++            CharType::kActualText, CPDF_Font::kInvalidCharCode, 0,
++            form_matrix.Transform(object->GetPos()), CFX_FloatRect(), matrix,
++            object);
++      }
++      for (size_t i = 0; i < object->CountItems(); ++i) {
++        if (++glyph_count > kMaxCharacters || units.size() >= kMaxUnits ||
++            character_count >= kMaxCharacters) {
++          return false;
++        }
++        const CPDF_TextObject::Item item = object->GetItemInfo(i);
++        // Qualify the base method to require an actual ToUnicode lookup rather
++        // than a derived font's guessed character-code/encoding fallback.
++        const WideString mapping =
++            font->CPDF_Font::UnicodeFromCharCode(item.char_code_);
++        if (mapping.IsEmpty() ||
++            mapping.GetLength() > kMaxCharacters - character_count) {
++          return false;
++        }
++        const bool mark_only = std::ranges::all_of(mapping, [](wchar_t c) {
++          return pdfium::unicode::GetBidiClass(c) == BidiClass::kNSM;
++        });
++        const FX_RECT bounds = font->GetCharBBox(item.char_code_);
++        const float scale = object->GetFontSize() / 1000;
++        CFX_FloatRect ink(bounds.left * scale + item.origin_.x,
++                          bounds.bottom * scale + item.origin_.y,
++                          bounds.right * scale + item.origin_.x,
++                          bounds.top * scale + item.origin_.y);
++        ink = matrix.TransformRect(ink);
++        const CFX_PointF origin = matrix.Transform(item.origin_);
++        const float advance = matrix.a * object->GetCharWidth(item.char_code_);
++        if (!std::isfinite(origin.x) || !std::isfinite(origin.y) ||
++            !std::isfinite(advance) || !std::isfinite(ink.left) ||
++            !std::isfinite(ink.right) || !std::isfinite(ink.top) ||
++            !std::isfinite(ink.bottom) || !std::isfinite(origin.x + advance) ||
++            advance < 0) {
++          return false;
++        }
++        if (replacement_index) {
++          SemanticUnit& unit = units[*replacement_index];
++          if (!unit.object) {
++            unit.ink = ink;
++            unit.object = object;
++            unit.matrix = matrix;
++            unit.em = em;
++            unit.space_width = space_width;
++          } else {
++            unit.ink.Union(ink);
++          }
++          if (!mark_only) {
++            if (!unit.has_base) {
++              unit.origin = origin;
++              unit.left = origin.x;
++              unit.right = origin.x + advance;
++              unit.has_base = true;
++            } else {
++              if (std::fabs(origin.y - unit.origin.y) > em * 0.08f) {
++                return false;
++              }
++              unit.left = std::min(unit.left, origin.x);
++              unit.right = std::max(unit.right, origin.x + advance);
++            }
++          }
++          continue;
++        }
++        const auto direction = Classify(mapping.AsStringView());
++        if (!direction) {
++          return false;
++        }
++        SemanticUnit unit;
++        unit.text = mapping;
++        unit.direction = *direction;
++        unit.ink = ink;
++        unit.origin = origin;
++        unit.matrix = matrix;
++        unit.object = object;
++        unit.left = origin.x;
++        unit.right = origin.x + advance;
++        unit.em = em;
++        unit.space_width = space_width;
++        unit.invocation = invocation;
++        unit.has_base = !mark_only;
++        for (wchar_t c : mapping) {
++          unit.chars.emplace_back(CharType::kNormal, item.char_code_, c, origin,
++                                  ink, matrix, object);
++        }
++        character_count += mapping.GetLength();
++        complex |= mark_only || mapping.GetLength() > 1;
++        units.push_back(std::move(unit));
++      }
++    }
++    return true;
++  };
++  if (!collect(collect, page_, CFX_Matrix(), 0, 0) || units.empty()) {
++    return false;
++  }
++
++  for (size_t i = 0; i < units.size(); ++i) {
++    units[i].source_index = i;
++  }
++  std::vector<SemanticUnit> clusters;
++  for (SemanticUnit& unit : units) {
++    if (unit.actual_text) {
++      if (!unit.has_base || unit.direction == UnitDirection::kMark) {
++        return false;
++      }
++      // The occurrence supplies coverage, not a glyph-to-character mapping.
++      // Shared coverage is preferable to invented font codes or mark-only
++      // boxes.
++      for (wchar_t c : unit.text) {
++        unit.chars.emplace_back(CharType::kActualText,
++                                CPDF_Font::kInvalidCharCode, c, unit.origin,
++                                unit.ink, unit.matrix, unit.object);
++      }
++    }
++    if (unit.direction != UnitDirection::kMark) {
++      clusters.push_back(std::move(unit));
++      continue;
++    }
++    if (clusters.empty()) {
++      return false;
++    }
++    SemanticUnit& base = clusters.back();
++    const float center = unit.ink.left / 2 + unit.ink.right / 2;
++    if (base.direction != UnitDirection::kRight ||
++        base.invocation != unit.invocation || base.actual_text ||
++        std::fabs(base.em - unit.em) > base.em * 0.1f ||
++        std::fabs(base.origin.y - unit.origin.y) > base.em * 0.8f ||
++        center < base.left - base.em * 0.2f ||
++        center > base.right + base.em * 0.2f ||
++        unit.ink.bottom > base.ink.top + base.em * 0.5f ||
++        unit.ink.top < base.ink.bottom - base.em * 0.5f) {
++      return false;
++    }
++    // Adjacency proposes an attachment; reject it when another compatible
++    // base is as close horizontally. This is not general shaping recovery.
++    const float distance = std::fabs(center - base.Center());
++    for (const SemanticUnit& other : units) {
++      if (other.source_index == base.source_index || !other.has_base ||
++          other.direction != UnitDirection::kRight ||
++          other.invocation != base.invocation ||
++          std::fabs(other.origin.y - base.origin.y) > base.em * 0.08f) {
++        continue;
++      }
++      if (std::fabs(center - other.Center()) <= distance + base.em * 0.02f) {
++        return false;
++      }
++    }
++    base.text += unit.text;
++    base.chars.insert(base.chars.end(), unit.chars.begin(), unit.chars.end());
++    base.ink.Union(unit.ink);
++  }
++
++  size_t right_count = 0;
++  size_t left_count = 0;
++  bool has_island = false;
++  std::optional<float> baseline;
++  float line_em = 0;
++  for (const SemanticUnit& unit : clusters) {
++    for (wchar_t c : unit.text) {
++      const BidiClass bidi = pdfium::unicode::GetBidiClass(c);
++      right_count += bidi == BidiClass::kR || bidi == BidiClass::kAL;
++      left_count += bidi == BidiClass::kL;
++    }
++    has_island |= IsIslandMember(unit.direction);
++    if (unit.direction == UnitDirection::kSpace) {
++      continue;
++    }
++    if (!baseline) {
++      baseline = unit.origin.y;
++      line_em = unit.em;
++    }
++    if (std::fabs(unit.origin.y - *baseline) > line_em * 0.08f ||
++        std::fabs(unit.em - line_em) > line_em * 0.1f) {
++      return false;
++    }
++  }
++  if (!baseline || right_count <= left_count || (!complex && !has_island)) {
++    return false;
++  }
++  for (const SemanticUnit& unit : clusters) {
++    if (std::fabs(unit.origin.y - *baseline) > line_em * 0.08f ||
++        unit.right <= unit.left) {
++      return false;
++    }
++  }
++
++  const auto get_visual_order =
++      [&](std::u16string logical, const std::vector<size_t>& owners,
++          CFX_BidiResolver::ParagraphDirection direction)
++      -> std::optional<std::vector<size_t>> {
++    if (owners.empty() || owners.size() > kMaxCharacters) {
++      return std::nullopt;
++    }
++    auto bidi = CFX_BidiResolver::Create(std::move(logical), direction);
++    if (!bidi) {
++      return std::nullopt;
++    }
++    const auto runs =
++        bidi->GetVisualRunsForLine(0, static_cast<int>(owners.size()));
++    if (runs.empty()) {
++      return std::nullopt;
++    }
++    std::vector<size_t> visual;
++    for (const auto& run : runs) {
++      for (int i = 0; i < run.length; ++i) {
++        const size_t owner =
++            owners[run.start + (run.is_rtl ? run.length - i - 1 : i)];
++        if (visual.empty() || visual.back() != owner ||
++            owner == kSeparatorOwner) {
++          visual.push_back(owner);
++        }
++      }
++    }
++    return visual;
++  };
++
++  // Preserve a competing logical interpretation before sorting or inference.
++  // Unit identities also distinguish equal text at different occurrences.
++  std::vector<size_t> source_order;
++  std::u16string source_logical;
++  std::vector<size_t> source_owners;
++  for (const SemanticUnit& unit : clusters) {
++    source_order.push_back(unit.source_index);
++    for (wchar_t c : unit.text) {
++      source_logical.push_back(static_cast<char16_t>(c));
++      source_owners.push_back(unit.source_index);
++    }
++  }
++  const auto source_ltr_visual =
++      get_visual_order(std::move(source_logical), source_owners,
++                       CFX_BidiResolver::ParagraphDirection::kLeftToRight);
++  if (!source_ltr_visual) {
++    return false;
++  }
++
++  std::stable_sort(clusters.begin(), clusters.end(),
++                   [](const SemanticUnit& a, const SemanticUnit& b) {
++                     return a.Center() < b.Center();
++                   });
++  std::vector<size_t> spatial_source_order;
++  for (const SemanticUnit& unit : clusters) {
++    spatial_source_order.push_back(unit.source_index);
++  }
++  const bool source_ltr_matches_geometry =
++      *source_ltr_visual == spatial_source_order;
++  const auto rightmost_strong = std::find_if(
++      clusters.rbegin(), clusters.rend(), [](const SemanticUnit& unit) {
++        return unit.direction == UnitDirection::kRight ||
++               unit.direction == UnitDirection::kLeft;
++      });
++  if (rightmost_strong == clusters.rend() ||
++      rightmost_strong->direction != UnitDirection::kRight) {
++    return false;
++  }
++  if (clusters.front().direction == UnitDirection::kSpace ||
++      clusters.back().direction == UnitDirection::kSpace) {
++    return false;
++  }
++
++  units.clear();
++  for (SemanticUnit& unit : clusters) {
++    if (!units.empty()) {
++      const SemanticUnit& previous = units.back();
++      const float center_delta = unit.Center() - previous.Center();
++      if (center_delta < line_em * 0.01f) {
++        return false;
++      }
++      const float gap = unit.left - previous.right;
++      if (gap > line_em * 2) {
++        return false;
++      }
++      const float threshold =
++          std::max(line_em * 0.12f,
++                   std::min(previous.space_width, unit.space_width) * 0.5f);
++      if (gap > threshold && previous.direction != UnitDirection::kSpace &&
++          unit.direction != UnitDirection::kSpace) {
++        SemanticUnit space;
++        space.text = L" ";
++        space.direction = UnitDirection::kSpace;
++        space.left = previous.right;
++        space.right = unit.left;
++        space.origin = CFX_PointF(space.left, *baseline);
++        space.em = line_em;
++        space.chars.emplace_back(
++            CharType::kGenerated, CPDF_Font::kInvalidCharCode, L' ',
++            space.origin,
++            CFX_FloatRect(space.left, *baseline, space.left, *baseline),
++            CFX_Matrix(), nullptr);
++        units.push_back(std::move(space));
++      }
++    }
++    units.push_back(std::move(unit));
++  }
++
++  // Verify legacy against the semantic units, independently of paint order.
++  // Failure to identify provenance is uncertainty, not permission to repair.
++  struct Provenance {
++    size_t unit;
++    const CharInfo* info;
++  };
++  using Locations = std::map<std::pair<float, float>, std::vector<Provenance>>;
++  std::map<const CPDF_TextObject*, std::map<uint32_t, Locations>> provenance;
++  std::vector<size_t> expected_visual;
++  for (size_t i = 0; i < units.size(); ++i) {
++    const SemanticUnit& unit = units[i];
++    if (unit.direction == UnitDirection::kSpace) {
++      expected_visual.insert(expected_visual.end(), unit.text.GetLength(),
++                             kSeparatorOwner);
++    } else {
++      expected_visual.push_back(i);
++    }
++    const auto& sources =
++        unit.actual_text ? unit.replacement_sources : unit.chars;
++    const CharInfo* previous = nullptr;
++    for (const CharInfo& info : sources) {
++      if (!info.text_object()) {
++        continue;
++      }
++      if (!previous || previous->text_object() != info.text_object() ||
++          previous->char_code() != info.char_code() ||
++          previous->origin() != info.origin() ||
++          previous->matrix() != info.matrix()) {
++        provenance[info.text_object()][info.char_code()]
++                  [{info.origin().x, info.origin().y}]
++                      .push_back({i, &info});
++      }
++      previous = &info;
++    }
++  }
++  bool legacy_consistent = true;
++  std::vector<size_t> consumed(units.size());
++  std::u16string legacy_logical;
++  std::vector<size_t> legacy_owners;
++  size_t last_owner = kSeparatorOwner;
++  for (const CharInfo& info : char_list_) {
++    // RTL normalization can reclassify a generated space as kPiece, while
++    // retaining its absent glyph provenance.
++    if (info.char_type() == CharType::kGenerated || !info.text_object()) {
++      if (info.unicode() == L'\r' || info.unicode() == L'\n') {
++        // The independently collected base geometry established a single line.
++        legacy_consistent = false;
++        continue;
++      }
++      if (info.unicode() != L' ') {
++        return false;
++      }
++      legacy_logical.push_back(u' ');
++      legacy_owners.push_back(kSeparatorOwner);
++      last_owner = kSeparatorOwner;
++      continue;
++    }
++    auto object = provenance.find(info.text_object());
++    if (object == provenance.end()) {
++      return false;
++    }
++    auto code = object->second.find(info.char_code());
++    if (code == object->second.end()) {
++      if (info.char_code() == CPDF_Font::kInvalidCharCode &&
++          info.unicode() == L' ') {
++        legacy_logical.push_back(u' ');
++        legacy_owners.push_back(kSeparatorOwner);
++        last_owner = kSeparatorOwner;
++        continue;
++      }
++      return false;
++    }
++    if (!std::isfinite(info.origin().x) || !std::isfinite(info.origin().y)) {
++      return false;
++    }
++    // Both paths transform the same stored item origins. Exact location keys
++    // avoid quadratic scans when one text object repeats a glyph many times.
++    auto location = code->second.find({info.origin().x, info.origin().y});
++    if (location == code->second.end()) {
++      return false;
++    }
++    std::optional<size_t> owner;
++    for (const Provenance& witness : location->second) {
++      if (info.matrix() != witness.info->matrix()) {
++        continue;
++      }
++      if (owner && *owner != witness.unit) {
++        return false;
++      }
++      owner = witness.unit;
++    }
++    if (!owner) {
++      return false;
++    }
++    const SemanticUnit& unit = units[*owner];
++    if (unit.direction == UnitDirection::kSpace) {
++      if (info.unicode() != L' ') {
++        return false;
++      }
++      legacy_owners.push_back(kSeparatorOwner);
++      last_owner = kSeparatorOwner;
++    } else {
++      const size_t offset = consumed[*owner]++;
++      if (offset >= unit.chars.size() ||
++          (offset != 0 && last_owner != *owner)) {
++        legacy_consistent = false;
++      } else {
++        const CharInfo& expected = unit.chars[offset];
++        if (info.unicode() != expected.unicode() ||
++            (!unit.actual_text &&
++             (info.text_object() != expected.text_object() ||
++              info.char_code() != expected.char_code() ||
++              info.origin() != expected.origin()))) {
++          legacy_consistent = false;
++        }
++      }
++      legacy_owners.push_back(*owner);
++      last_owner = *owner;
++    }
++    legacy_logical.push_back(static_cast<char16_t>(info.unicode()));
++  }
++  for (size_t i = 0; i < units.size(); ++i) {
++    if (units[i].direction != UnitDirection::kSpace &&
++        consumed[i] != units[i].chars.size()) {
++      legacy_consistent = false;
++    }
++  }
++  if (legacy_consistent) {
++    for (auto direction :
++         {CFX_BidiResolver::ParagraphDirection::kLeftToRight,
++          CFX_BidiResolver::ParagraphDirection::kRightToLeft}) {
++      const auto visual =
++          get_visual_order(legacy_logical, legacy_owners, direction);
++      if (!visual || *visual == expected_visual) {
++        return false;
++      }
++    }
++  }
++
++  // LTR/numeric islands contain only spatial neighbors. A weak punctuation
++  // unit joins an island only between members, never as terminal punctuation.
++  std::vector<size_t> island_begin(units.size());
++  std::iota(island_begin.begin(), island_begin.end(), 0);
++  for (size_t i = 0; i < units.size(); ++i) {
++    if (!IsIslandMember(units[i].direction)) {
++      continue;
++    }
++    size_t end = i + 1;
++    while (end < units.size()) {
++      if (IsIslandMember(units[end].direction)) {
++        ++end;
++      } else if (units[end].direction == UnitDirection::kNeutral &&
++                 end + 1 < units.size() &&
++                 IsIslandMember(units[end + 1].direction)) {
++        end += 2;
++      } else {
++        break;
++      }
++    }
++    for (size_t j = i; j < end; ++j) {
++      island_begin[j] = i;
++    }
++    i = end - 1;
++  }
++  std::vector<size_t> order;
++  for (size_t end = units.size(); end > 0;) {
++    const size_t begin = island_begin[end - 1];
++    for (size_t i = begin; i < end; ++i) {
++      order.push_back(i);
++    }
++    end = begin;
++  }
++
++  if (source_ltr_matches_geometry) {
++    std::vector<size_t> rtl_source_order;
++    for (size_t index : order) {
++      const SemanticUnit& unit = units[index];
++      // A newly inferred space is not a change in source-unit reading order.
++      if (unit.chars.front().char_type() != CharType::kGenerated) {
++        rtl_source_order.push_back(unit.source_index);
++      }
++    }
++    if (rtl_source_order != source_order) {
++      return false;
++    }
++  }
++
++  std::u16string logical;
++  std::vector<size_t> owners;
++  for (size_t index : order) {
++    for (wchar_t c : units[index].text) {
++      logical.push_back(static_cast<char16_t>(c));
++      owners.push_back(index);
++    }
++  }
++  // Excluding the source-LTR interpretation is containment, not a unique
++  // inverse: a different logical stream can still share this visual order.
++  const auto visual =
++      get_visual_order(std::move(logical), owners,
++                       CFX_BidiResolver::ParagraphDirection::kRightToLeft);
++  if (!visual || visual->size() != units.size()) {
++    return false;
++  }
++  for (size_t i = 0; i < visual->size(); ++i) {
++    if ((*visual)[i] != i) {
++      return false;
++    }
++  }
++
++  std::vector<CharInfo> result;
++  for (size_t index : order) {
++    const auto& chars = units[index].chars;
++    result.insert(result.end(), chars.begin(), chars.end());
++  }
++  char_list_.clear();
++  text_buf_.Delete(0, text_buf_.GetLength());
++  for (const CharInfo& info : result) {
++    text_buf_.AppendChar(info.unicode());
++    char_list_.push_back(info);
++  }
++  return true;
++}
+diff --git a/fpdfsdk/fpdf_text_embeddertest.cpp b/fpdfsdk/fpdf_text_embeddertest.cpp
+index 983e920e4b8dc92f2311f7366560c51cc61c3d76..0131e1cce854c57c3cca46139af9051ea1e60670 100644
+--- a/fpdfsdk/fpdf_text_embeddertest.cpp
++++ b/fpdfsdk/fpdf_text_embeddertest.cpp
+@@ -2760,6 +2760,129 @@ TEST_F(FPDFTextEmbedderTest, ActualTextRtl) {
+               ElementsAreArray(kExpectedText));
+ }
+ 
++TEST_F(FPDFTextEmbedderTest, ArabicVisualWordOrder) {
++  ASSERT_TRUE(OpenDocument("arabic_visual_units.pdf"));
++  ASSERT_EQ(2, FPDF_GetPageCount(document()));
++  ScopedPage page = LoadScopedPage(0);
++  ASSERT_TRUE(page);
++  ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++  ASSERT_TRUE(text_page);
++
++  // At y=150, increasing x paints LAM KAF, DAL JEEM, BEH ALEF, with spaces.
++  // Reading right-to-left must reverse word order as well as each word.
++  // The unrelated ALEF at y=110 keeps this on the multiline extraction path.
++  static constexpr unsigned short kExpectedText[] = {
++      0x0627, 0x0628, ' ',  0x062c, 0x062f, ' ',
++      0x0643, 0x0644, '\r', '\n',   0x0627, 0};
++  static constexpr int kCharCount = std::size(kExpectedText) - 1;
++  EXPECT_EQ(kCharCount, FPDFText_CountChars(text_page.get()));
++  unsigned short buffer[std::size(kExpectedText)] = {};
++  EXPECT_EQ(kCharCount + 1,
++            FPDFText_GetText(text_page.get(), 0, kCharCount, buffer));
++  EXPECT_THAT(buffer, ElementsAreArray(kExpectedText));
++  for (int i = 0; i < kCharCount; ++i) {
++    SCOPED_TRACE(i);
++    EXPECT_EQ(static_cast<unsigned int>(kExpectedText[i]),
++              FPDFText_GetUnicode(text_page.get(), i));
++  }
++
++  ScopedFPDFWideString query =
++      GetFPDFWideString(L"\u0627\u0628 \u062c\u062f \u0643\u0644");
++  ScopedFPDFTextFind search(
++      FPDFText_FindStart(text_page.get(), query.get(), FPDF_MATCHCASE, 0));
++  ASSERT_TRUE(search);
++  ASSERT_TRUE(FPDFText_FindNext(search.get()));
++  EXPECT_EQ(0, FPDFText_GetSchResultIndex(search.get()));
++  EXPECT_EQ(8, FPDFText_GetSchCount(search.get()));
++  EXPECT_FALSE(FPDFText_FindNext(search.get()));
++}
++
++TEST_F(FPDFTextEmbedderTest, ArabicVisualMultiCodepointUnits) {
++  ASSERT_TRUE(OpenDocument("arabic_visual_units.pdf"));
++  ScopedPage page = LoadScopedPage(1);
++  ASSERT_TRUE(page);
++  ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++  ASSERT_TRUE(text_page);
++
++  // Increasing x paints TEH_MARBUTA, [YA MIM], DAL, QAF, LAM, ALEF.
++  // Reverse glyphs, not the logical YA MIM mapping inside one glyph.
++  // The second baseline paints BEH ALEF space [A B] space DAL JEEM.
++  // This ambiguous mixed line conservatively retains default-LTR run order;
++  // strong LTR prevents automatic RTL inference despite the RTL majority.
++  static constexpr unsigned short kExpectedText[] = {
++      0x0627, 0x0644, 0x0642, 0x062f, 0x064a, 0x0645, 0x0629, '\r',   '\n',
++      0x0627, 0x0628, ' ',    'A',    'B',    ' ',    0x062c, 0x062f, 0};
++  static constexpr int kCharCount = std::size(kExpectedText) - 1;
++  EXPECT_EQ(kCharCount, FPDFText_CountChars(text_page.get()));
++  unsigned short buffer[std::size(kExpectedText)] = {};
++  EXPECT_EQ(kCharCount + 1,
++            FPDFText_GetText(text_page.get(), 0, kCharCount, buffer));
++  EXPECT_THAT(buffer, ElementsAreArray(kExpectedText));
++  for (int i = 0; i < kCharCount; ++i) {
++    SCOPED_TRACE(i);
++    EXPECT_EQ(static_cast<unsigned int>(kExpectedText[i]),
++              FPDFText_GetUnicode(text_page.get(), i));
++  }
++
++  static constexpr struct {
++    int index;
++    double x;
++    double y;
++    std::array<unsigned short, 3> text;
++  } kUnits[] = {{4, 30, 150, {0x064a, 0x0645, 0}},
++                {12, 50, 110, {'A', 'B', 0}}};
++  for (const auto& unit : kUnits) {
++    SCOPED_TRACE(unit.index);
++    unsigned short mapped[3] = {};
++    EXPECT_EQ(3, FPDFText_GetText(text_page.get(), unit.index, 2, mapped));
++    EXPECT_THAT(mapped, ElementsAreArray(unit.text));
++
++    // Each expansion exposes two public character indices with one shared
++    // glyph origin and the full Type 3 ink box (10 by 16 PDF points).
++    for (int i = unit.index; i < unit.index + 2; ++i) {
++      SCOPED_TRACE(i);
++      double x;
++      double y;
++      ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), i, &x, &y));
++      EXPECT_NEAR_THREE_PLACES(unit.x, x);
++      EXPECT_NEAR_THREE_PLACES(unit.y, y);
++      RectDouble box;
++      ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), i, &box.left, &box.right,
++                                      &box.bottom, &box.top));
++      CompareFS_RECT_DOUBLE_Three_Places(
++          {unit.x, unit.y + 16, unit.x + 10, unit.y}, box);
++    }
++
++    ScopedFPDFTextFind search(FPDFText_FindStart(
++        text_page.get(), unit.text.data(), FPDF_MATCHCASE, 0));
++    ASSERT_TRUE(search);
++    EXPECT_TRUE(FPDFText_FindNext(search.get()));
++    EXPECT_EQ(unit.index, FPDFText_GetSchResultIndex(search.get()));
++    EXPECT_EQ(2, FPDFText_GetSchCount(search.get()));
++    EXPECT_FALSE(FPDFText_FindNext(search.get()));
++  }
++
++  static constexpr struct {
++    const wchar_t* text;
++    int index;
++    int count;
++  } kQueries[] = {
++      {L"\u0627\u0644\u0642\u062f\u064a\u0645\u0629", 0, 7},
++      {L"\u0627\u0628 AB \u062c\u062f", 9, 8},
++  };
++  for (const auto& test_case : kQueries) {
++    SCOPED_TRACE(test_case.index);
++    ScopedFPDFWideString query = GetFPDFWideString(test_case.text);
++    ScopedFPDFTextFind search(
++        FPDFText_FindStart(text_page.get(), query.get(), FPDF_MATCHCASE, 0));
++    ASSERT_TRUE(search);
++    EXPECT_TRUE(FPDFText_FindNext(search.get()));
++    EXPECT_EQ(test_case.index, FPDFText_GetSchResultIndex(search.get()));
++    EXPECT_EQ(test_case.count, FPDFText_GetSchCount(search.get()));
++    EXPECT_FALSE(FPDFText_FindNext(search.get()));
++  }
++}
++
+ TEST_F(FPDFTextEmbedderTest, ActualTextRtlMixedUnits) {
+   ASSERT_TRUE(OpenDocument("actualtext_rtl_units.pdf"));
+   // Page 0 paints [ActualText SHEEN], ordinary YA AIN LAM LAM. The replacement
+@@ -2969,3 +3092,194 @@ TEST_F(FPDFTextEmbedderTest, ArabicMarkedPresentationForm) {
+     EXPECT_FALSE(FPDFText_FindNext(search.get()));
+   }
+ }
++
++TEST_F(FPDFTextEmbedderTest, ArabicOrphanMarkPositions) {
++  ASSERT_TRUE(OpenDocument("arabic_orphan_mark_positions.pdf"));
++  // A leading zero-width orphan does not establish visual source order.
++  // Descending word origins already encode logical RTL order. Only the
++  // ascending case requires block reversal; equal-X and nonmonotonic cases
++  // preserve prior behavior rather than asserting a new reading-order oracle.
++  // Every word is one logical ToUnicode unit, never two reorderable letters.
++  static constexpr struct {
++    const char* name;
++    const wchar_t* text;
++    int query_index;
++    int word_count;
++    std::array<int, 3> word_indices;
++    std::array<double, 3> word_x;
++    bool reversed_axes = false;
++  } kCases[] = {
++      {"Descending",
++       L"\u064e\u0628\u062a \u062c\u062d",
++       1,
++       2,
++       {1, 4, -1},
++       {180, 140, 0}},
++      {"Ascending",
++       L"\u0628\u062a \u062c\u062d \u064e\u062f\u0630",
++       0,
++       3,
++       {0, 3, 7},
++       {140, 120, 100}},
++      {"EqualXPreservesLegacy",
++       L"\u064e\u0628\u062a \u062c\u062d",
++       1,
++       2,
++       {1, 4, -1},
++       {100, 100, 0}},
++      {"NonmonotonicPreservesLegacy",
++       L"\u064e\u0628\u062a \u062c\u062d \u062f\u0630",
++       1,
++       3,
++       {1, 4, 7},
++       {140, 180, 160}},
++      {"ReversedAxesWithCompensatingPageRotation",
++       L"\u064e\u0628\u062a \u062c\u062d",
++       1,
++       2,
++       {1, 4, -1},
++       {120, 160, 0},
++       true},
++  };
++  ASSERT_EQ(static_cast<int>(std::size(kCases)), FPDF_GetPageCount(document()));
++  std::string upright_bitmap_hash;
++  for (int page_index = 0; page_index < static_cast<int>(std::size(kCases));
++       ++page_index) {
++    const auto& test_case = kCases[page_index];
++    SCOPED_TRACE(test_case.name);
++    ScopedPage page = LoadScopedPage(page_index);
++    ASSERT_TRUE(page);
++    if (page_index == 0 || test_case.reversed_axes) {
++      ScopedFPDFBitmap bitmap = RenderPage(page.get());
++      ASSERT_TRUE(bitmap);
++      if (page_index == 0) {
++        upright_bitmap_hash = HashBitmap(bitmap.get());
++      } else {
++        // Content rotation and /Rotate cancel visually, not in text geometry.
++        EXPECT_EQ(upright_bitmap_hash, HashBitmap(bitmap.get()));
++      }
++    }
++    ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++    ASSERT_TRUE(text_page);
++    const std::wstring expected(test_case.text);
++    const int count = static_cast<int>(expected.size());
++    ASSERT_EQ(count, FPDFText_CountChars(text_page.get()));
++    std::vector<unsigned short> buffer(count + 1);
++    ASSERT_EQ(count + 1,
++              FPDFText_GetText(text_page.get(), 0, count, buffer.data()));
++    EXPECT_EQ(expected, GetPlatformWString(buffer.data()));
++    for (int i = 0; i < count; ++i) {
++      SCOPED_TRACE(i);
++      EXPECT_EQ(static_cast<unsigned int>(expected[i]),
++                FPDFText_GetUnicode(text_page.get(), i));
++      unsigned short character[2] = {};
++      EXPECT_EQ(2, FPDFText_GetText(text_page.get(), i, 1, character));
++      EXPECT_EQ(static_cast<unsigned short>(expected[i]), character[0]);
++      EXPECT_EQ(0, character[1]);
++    }
++    if (test_case.reversed_axes) {
++      double x;
++      double y;
++      ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), 0, &x, &y));
++      EXPECT_NEAR_THREE_PLACES(120, x);
++      EXPECT_NEAR_THREE_PLACES(100, y);
++      RectDouble mark_box;
++      ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), 0, &mark_box.left,
++                                      &mark_box.right, &mark_box.bottom,
++                                      &mark_box.top));
++      CompareFS_RECT_DOUBLE_Three_Places({114, 82, 116, 80}, mark_box);
++    }
++    for (int word = 0; word < test_case.word_count; ++word) {
++      const int start = test_case.word_indices[word];
++      const double word_x = test_case.word_x[word];
++      for (int index = start; index < start + 2; ++index) {
++        SCOPED_TRACE(index);
++        double x;
++        double y;
++        ASSERT_TRUE(FPDFText_GetCharOrigin(text_page.get(), index, &x, &y));
++        EXPECT_NEAR_THREE_PLACES(word_x, x);
++        EXPECT_NEAR_THREE_PLACES(100, y);
++        RectDouble box;
++        ASSERT_TRUE(FPDFText_GetCharBox(text_page.get(), index, &box.left,
++                                        &box.right, &box.bottom, &box.top));
++        if (test_case.reversed_axes) {
++          // Public geometry stays in the source plane: x'=300-x, y'=200-y.
++          CompareFS_RECT_DOUBLE_Three_Places({word_x - 10, 100, word_x, 84},
++                                             box);
++          FS_MATRIX matrix;
++          ASSERT_TRUE(FPDFText_GetMatrix(text_page.get(), index, &matrix));
++          EXPECT_FLOAT_EQ(-1, matrix.a);
++          EXPECT_FLOAT_EQ(0, matrix.b);
++          EXPECT_FLOAT_EQ(0, matrix.c);
++          EXPECT_FLOAT_EQ(-1, matrix.d);
++        } else {
++          CompareFS_RECT_DOUBLE_Three_Places({word_x, 116, word_x + 10, 100},
++                                             box);
++        }
++      }
++      // Both codepoints share one glyph box. Equal-X overlapping glyphs have
++      // an ambiguous point hit, so do not prescribe their point-hit index.
++      if (page_index != 2) {
++        EXPECT_EQ(start, FPDFText_GetCharIndexAtPos(
++                             text_page.get(),
++                             word_x + (test_case.reversed_axes ? -5 : 5),
++                             test_case.reversed_axes ? 92 : 108, 0, 0));
++      }
++    }
++    ScopedFPDFWideString query =
++        GetFPDFWideString(L"\u0628\u062a \u062c\u062d");
++    for (unsigned long flags :
++         {FPDF_MATCHCASE, FPDF_MATCHCASE | FPDF_MATCHWHOLEWORD}) {
++      ScopedFPDFTextFind search(
++          FPDFText_FindStart(text_page.get(), query.get(), flags, 0));
++      ASSERT_TRUE(search);
++      ASSERT_TRUE(FPDFText_FindNext(search.get()));
++      EXPECT_EQ(test_case.query_index,
++                FPDFText_GetSchResultIndex(search.get()));
++      EXPECT_EQ(5, FPDFText_GetSchCount(search.get()));
++      unsigned short matched[6] = {};
++      EXPECT_EQ(6, FPDFText_GetText(text_page.get(), test_case.query_index, 5,
++                                    matched));
++      EXPECT_EQ(L"\u0628\u062a \u062c\u062d", GetPlatformWString(matched));
++      EXPECT_FALSE(FPDFText_FindNext(search.get()));
++    }
++  }
++}
++
++TEST_F(FPDFTextEmbedderTest, ViewerRtlPreservesLatinText) {
++  ASSERT_TRUE(OpenDocument("viewer_rtl_ltr_text.pdf"));
++  ScopedPage page = LoadScopedPage(0);
++  ASSERT_TRUE(page);
++  ScopedFPDFTextPage text_page(FPDFText_LoadPage(page.get()));
++  ASSERT_TRUE(text_page);
++  const std::wstring expected =
++      L"https://example.com/path/file.pdf\r\n"
++      L"Indicators for Policy Management\r\n"
++      L"12-34";
++  ASSERT_EQ(static_cast<int>(expected.size()),
++            FPDFText_CountChars(text_page.get()));
++  std::vector<unsigned short> buffer(expected.size() + 1);
++  ASSERT_EQ(static_cast<int>(buffer.size()),
++            FPDFText_GetText(text_page.get(), 0,
++                             static_cast<int>(expected.size()), buffer.data()));
++  EXPECT_EQ(expected, GetPlatformWString(buffer.data()));
++  for (size_t i = 0; i < expected.size(); ++i) {
++    EXPECT_EQ(static_cast<unsigned int>(expected[i]),
++              FPDFText_GetUnicode(text_page.get(), i));
++  }
++  for (const auto& [query_text, offset] :
++       std::array<std::pair<const wchar_t*, int>, 3>{{
++           {L"https://example.com/path/file.pdf", 0},
++           {L"Indicators for Policy Management", 35},
++           {L"12-34", 69}}}) {
++    const auto query = GetFPDFWideString(query_text);
++    ScopedFPDFTextFind search(FPDFText_FindStart(
++        text_page.get(), query.get(), FPDF_MATCHCASE, 0));
++    ASSERT_TRUE(search);
++    ASSERT_TRUE(FPDFText_FindNext(search.get()));
++    EXPECT_EQ(offset, FPDFText_GetSchResultIndex(search.get()));
++    EXPECT_EQ(static_cast<int>(std::wstring_view(query_text).size()),
++              FPDFText_GetSchCount(search.get()));
++    EXPECT_FALSE(FPDFText_FindNext(search.get()));
++  }
++}
+diff --git a/testing/resources/arabic_orphan_mark_positions.in b/testing/resources/arabic_orphan_mark_positions.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..69ffd61fcbca19e3e025011fa5189e237a54c4cd
+--- /dev/null
++++ b/testing/resources/arabic_orphan_mark_positions.in
+@@ -0,0 +1,129 @@
++{{header}}
++% Handmade Type3 boxes; each word is a complete two-letter ToUnicode mapping.
++% FATHA is a leading zero-width orphan, not assigned to a base by these tests.
++% Its source-first position excludes the single-line semantic helper.
++% Page 0 reproduces the reviewed descending-position witness exactly:
++% mark/BEH-TEH at x=180, SPACE at x=160, JEEM-HAH at x=140, all y=100.
++% Positive TJ operands subtract advance: 10 - 30 = -20 points per step.
++% Page 1 has ascending word origins 100,120,140, with the orphan on the
++% unrelated leftmost block. RTL word order must give the unmarked phrase
++% BEH-TEH SPACE JEEM-HAH before the unchanged FATHA DAL-DHAL block.
++% Page 2 puts both words at x=100. Page 3 uses x=140,180,160. These ambiguous
++% position cases preserve prior extraction; they do not assert reading order.
++% Page 4 wraps page 0 in [-1 0 0 -1 300 200] cm and /Rotate 180. The raster
++% stays upright, but local a=d=-1 and source-plane word origins become 120,160.
++% Preserve page 0's text/indices, using transformed boxes and hit coordinates.
++{{object 1 0}} << /Type /Catalog /Pages 2 0 R >>
++endobj
++{{object 2 0}} <<
++  /Type /Pages /Count 5 /Kids [3 0 R 4 0 R 5 0 R 6 0 R 16 0 R]
++  /MediaBox [0 0 300 200]
++  /Resources << /Font << /F1 11 0 R >> >>
++>>
++endobj
++{{object 3 0}} << /Type /Page /Parent 2 0 R /Contents 7 0 R >>
++endobj
++{{object 4 0}} << /Type /Page /Parent 2 0 R /Contents 8 0 R >>
++endobj
++{{object 5 0}} << /Type /Page /Parent 2 0 R /Contents 9 0 R >>
++endobj
++{{object 6 0}} << /Type /Page /Parent 2 0 R /Contents 10 0 R >>
++endobj
++{{object 7 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 180 100 Tm [<04> <01> 1500 <05> 1500 <02>] TJ ET
++endstream
++endobj
++{{object 8 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 100 100 Tm [<04> <03> <05> <02> <05> <01>] TJ ET
++endstream
++endobj
++{{object 9 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 100 100 Tm [<04> <01> 500 <05> 500 <02>] TJ ET
++endstream
++endobj
++{{object 10 0}} <<
++  {{streamlen}}
++>>
++stream
++BT /F1 20 Tf 1 0 0 1 140 100 Tm [<04> <01> -500 <05> -500 <02> 1000 <05> 1000 <03>] TJ ET
++endstream
++endobj
++{{object 11 0}} <<
++  /Type /Font /Subtype /Type3
++  /FontBBox [0 0 2000 1000] /FontMatrix [0.001 0 0 0.001 0 0]
++  /CharProcs << /base 12 0 R /mark 13 0 R /space 14 0 R >>
++  /Encoding << /Type /Encoding /Differences [1 /base /base /base /mark /space] >>
++  /FirstChar 1 /LastChar 5 /Widths [500 500 500 0 500]
++  /Resources << >> /ToUnicode 15 0 R
++>>
++endobj
++{{object 12 0}} <<
++  {{streamlen}}
++>>
++stream
++500 0 0 0 500 800 d1
++0 0 500 800 re f
++endstream
++endobj
++{{object 13 0}} <<
++  {{streamlen}}
++>>
++stream
++0 0 200 900 300 1000 d1
++200 900 100 100 re f
++endstream
++endobj
++{{object 14 0}} <<
++  {{streamlen}}
++>>
++stream
++500 0 0 0 0 0 d1
++endstream
++endobj
++{{object 15 0}} <<
++  {{streamlen}}
++>>
++stream
++/CIDInit /ProcSet findresource begin
++12 dict begin begincmap
++/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
++/CMapName /OrphanWordPositions def /CMapType 2 def
++1 begincodespacerange
++<00> <FF>
++endcodespacerange
++5 beginbfchar
++<01> <0628062A>
++<02> <062C062D>
++<03> <062F0630>
++<04> <064E>
++<05> <0020>
++endbfchar
++endcmap CMapName currentdict /CMap defineresource pop end end
++endstream
++endobj
++{{object 16 0}} <<
++  /Type /Page /Parent 2 0 R /Contents 17 0 R /Rotate 180
++>>
++endobj
++{{object 17 0}} <<
++  {{streamlen}}
++>>
++stream
++q -1 0 0 -1 300 200 cm
++BT /F1 20 Tf 1 0 0 1 180 100 Tm [<04> <01> 1500 <05> 1500 <02>] TJ ET
++Q
++endstream
++endobj
++{{xref}}
++{{trailer}}
++{{startxref}}
++%%EOF
+diff --git a/testing/resources/arabic_visual_units.in b/testing/resources/arabic_visual_units.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..e1e7a41d62b74ee74567c36d1ce3a4e6c803741f
+--- /dev/null
++++ b/testing/resources/arabic_visual_units.in
+@@ -0,0 +1,144 @@
++{{header}}
++% Synthetic boxes, not an embedded Arabic font. All glyphs advance 500 units;
++% non-space ink is [0 0 500 800]. At size 20 each glyph advances 10 PDF points.
++% No ActualText, shaping, or presentation-form normalization is involved.
++% Page 0, y=150: paint left-to-right at x=20,30,...,90:
++%   LAM KAF SPACE DAL JEEM SPACE BEH ALEF.
++% Read right-to-left as ALEF BEH SPACE JEEM DAL SPACE KAF LAM.
++% Page 1, y=150: paint left-to-right at x=20,30,...,70:
++%   TEH_MARBUTA [YA MIM] DAL QAF LAM ALEF.
++% Read glyphs right-to-left but retain each ToUnicode destination internally:
++%   ALEF LAM QAF DAL YA MIM TEH_MARBUTA (U+0627 0644 0642 062F 064A 0645 0629).
++% The YA MIM pair is ONE glyph at (30,150), not two coincident glyphs.
++% Page 1, y=110: paint BEH ALEF SPACE [A B] SPACE DAL JEEM at x=20,30,...,80.
++% With no explicit paragraph direction, conservatively retain default-LTR run
++% order: ALEF BEH SPACE A B SPACE JEEM DAL. Strong LTR prevents automatic RTL
++% inference; an RTL majority alone does not disambiguate this mixed line.
++% A B is ONE LTR glyph at (50,110); its mapping must not become B A.
++% Each page has an unrelated second baseline to exercise multiline extraction,
++% not the candidate's whole-page single-line semantic repair.
++{{object 1 0}} <<
++  /Type /Catalog
++  /Pages 2 0 R
++>>
++endobj
++{{object 2 0}} <<
++  /Type /Pages
++  /Count 2
++  /Kids [3 0 R 4 0 R]
++  /MediaBox [0 0 200 200]
++  /Resources << /Font << /F1 7 0 R >> >>
++>>
++endobj
++{{object 3 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 5 0 R
++>>
++endobj
++{{object 4 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Contents 6 0 R
++>>
++endobj
++{{object 5 0}} <<
++  {{streamlen}}
++>>
++stream
++BT
++/F1 20 Tf
++1 0 0 1 20 150 Tm
++(FE DC BA) Tj
++1 0 0 1 20 110 Tm
++(A) Tj
++ET
++endstream
++endobj
++{{object 6 0}} <<
++  {{streamlen}}
++>>
++stream
++BT
++/F1 20 Tf
++1 0 0 1 20 150 Tm
++(GHDJFA) Tj
++1 0 0 1 20 110 Tm
++(BA I DC) Tj
++ET
++endstream
++endobj
++{{object 7 0}} <<
++  /Type /Font
++  /Subtype /Type3
++  /FontBBox [0 0 500 800]
++  /FontMatrix [0.001 0 0 0.001 0 0]
++  /CharProcs <<
++    /space 9 0 R
++    /A 8 0 R /B 8 0 R /C 8 0 R /D 8 0 R /E 8 0 R
++    /F 8 0 R /G 8 0 R /H 8 0 R /I 8 0 R /J 8 0 R
++  >>
++  /Encoding << /Type /Encoding /Differences [32 /space 65 /A /B /C /D /E /F /G /H /I /J] >>
++  /FirstChar 32
++  /LastChar 74
++  /Widths [
++    500 0 0 0 0 0 0 0 0 0 0
++    0 0 0 0 0 0 0 0 0 0 0
++    0 0 0 0 0 0 0 0 0 0 0
++    500 500 500 500 500 500 500 500 500 500
++  ]
++  /Resources << >>
++  /ToUnicode 10 0 R
++>>
++endobj
++{{object 8 0}} <<
++  {{streamlen}}
++>>
++stream
++500 0 0 0 500 800 d1
++0 0 500 800 re f
++endstream
++endobj
++{{object 9 0}} <<
++  {{streamlen}}
++>>
++stream
++500 0 d0
++endstream
++endobj
++{{object 10 0}} <<
++  {{streamlen}}
++>>
++stream
++/CIDInit /ProcSet findresource begin
++12 dict begin
++begincmap
++/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
++/CMapName /ArabicVisualUnits def
++/CMapType 2 def
++1 begincodespacerange
++<00> <FF>
++endcodespacerange
++11 beginbfchar
++<20> <0020>
++<41> <0627>
++<42> <0628>
++<43> <062C>
++<44> <062F>
++<45> <0643>
++<46> <0644>
++<47> <0629>
++<48> <064A0645>
++<49> <00410042>
++<4A> <0642>
++endbfchar
++endcmap
++CMapName currentdict /CMap defineresource pop
++end
++end
++endstream
++endobj
++{{xref}}
++{{trailer}}
++{{startxref}}
++%%EOF
+diff --git a/testing/resources/viewer_rtl_ltr_text.in b/testing/resources/viewer_rtl_ltr_text.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..5c2722a25e38e0dd11376a1620b7f8a80522a221
+--- /dev/null
++++ b/testing/resources/viewer_rtl_ltr_text.in
+@@ -0,0 +1,46 @@
++{{header}}
++{{object 1 0}} <<
++  /Type /Catalog
++  /Pages 2 0 R
++  /ViewerPreferences << /Direction /R2L >>
++>>
++endobj
++{{object 2 0}} <<
++  /Type /Pages
++  /MediaBox [0 0 400 150]
++  /Count 1
++  /Kids [3 0 R]
++>>
++endobj
++{{object 3 0}} <<
++  /Type /Page
++  /Parent 2 0 R
++  /Resources << /Font << /F1 4 0 R >> >>
++  /Contents 5 0 R
++>>
++endobj
++{{object 4 0}} <<
++  /Type /Font
++  /Subtype /Type1
++  /BaseFont /Helvetica
++>>
++endobj
++{{object 5 0}} <<
++  {{streamlen}}
++>>
++stream
++BT
++/F1 12 Tf
++20 110 Td
++(https://example.com/path/file.pdf) Tj
++0 -30 Td
++(Indicators for Policy Management) Tj
++0 -30 Td
++(12-34) Tj
++ET
++endstream
++endobj
++{{xref}}
++{{trailer}}
++{{startxref}}
++%%EOF

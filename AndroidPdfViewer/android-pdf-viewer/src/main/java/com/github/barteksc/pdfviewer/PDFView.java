@@ -28,6 +28,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
+import android.graphics.DrawFilter;
 import android.graphics.Paint;
 import android.graphics.Paint.Style;
 import android.graphics.PaintFlagsDrawFilter;
@@ -104,6 +105,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -803,6 +805,8 @@ public class PDFView extends RelativeLayout {
     private boolean enableAntialiasing = true;
     private PaintFlagsDrawFilter antialiasFilter =
         new PaintFlagsDrawFilter(0, Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final PaintFlagsDrawFilter pageBitmapDrawFilter =
+        new PaintFlagsDrawFilter(Paint.ANTI_ALIAS_FLAG, Paint.FILTER_BITMAP_FLAG);
 
     /**
      * Spacing between pages, in px
@@ -973,6 +977,7 @@ public class PDFView extends RelativeLayout {
         }
 
         callbacks.callOnPageChange(currentPage, pdfFile.getPagesCount());
+        publishDebugState();
     }
 
     /**
@@ -1051,6 +1056,14 @@ public class PDFView extends RelativeLayout {
 
     public void stopFling() {
         animationManager.stopFling();
+    }
+
+    public boolean isAnimating() {
+        return animationManager != null && animationManager.isAnimating();
+    }
+
+    public boolean isFlinging() {
+        return animationManager != null && animationManager.isFlinging();
     }
 
     public int getPageCount() {
@@ -1703,7 +1716,7 @@ public class PDFView extends RelativeLayout {
             }
 
             Rect srcRect = new Rect(srcLeft, srcTop, srcRight, srcBottom);
-            canvas.drawBitmap(bitmap, srcRect, dstRect, paint);
+            drawPageBitmap(canvas, bitmap, srcRect, dstRect);
 
             canvas.translate(-localTranslationX, -localTranslationY);
         }
@@ -1763,7 +1776,7 @@ public class PDFView extends RelativeLayout {
                 return;
             }
 
-            canvas.drawBitmap(renderedBitmap, srcRect, dstRect, paint);
+            drawPageBitmap(canvas, renderedBitmap, srcRect, dstRect);
 
             if (Constants.DEBUG_MODE) {
                 debugPaint.setColor(part.getPage() % 2 == 0 ? Color.RED : Color.BLUE);
@@ -1772,6 +1785,18 @@ public class PDFView extends RelativeLayout {
 
             // Restore the canvas position
             canvas.translate(-localTranslationX, -localTranslationY);
+        }
+    }
+
+    private void drawPageBitmap(Canvas canvas, Bitmap bitmap, Rect source, RectF destination) {
+        DrawFilter previousFilter = canvas.getDrawFilter();
+        if (enableAntialiasing) {
+            canvas.setDrawFilter(pageBitmapDrawFilter);
+        }
+        try {
+            canvas.drawBitmap(bitmap, source, destination, paint);
+        } finally {
+            canvas.setDrawFilter(previousFilter);
         }
     }
 
@@ -1843,6 +1868,7 @@ public class PDFView extends RelativeLayout {
         if (!restoreDefaultViewState()) {
             jumpTo(defaultPage, false);
         }
+        publishDebugState();
     }
 
     private boolean restoreDefaultViewState() {
@@ -1923,6 +1949,7 @@ public class PDFView extends RelativeLayout {
         } else {
             Log.e("PDFView", "load pdf error", t);
         }
+        publishDebugState();
     }
 
     void redraw() {
@@ -1954,6 +1981,7 @@ public class PDFView extends RelativeLayout {
 
         cacheManager.cachePart(part);
         redraw();
+        publishDebugState();
     }
 
     public void moveTo(float offsetX, float offsetY) {
@@ -2281,6 +2309,7 @@ public class PDFView extends RelativeLayout {
      */
     public void zoomTo(float zoom) {
         this.zoom = zoom;
+        publishDebugState();
     }
 
     /**
@@ -2702,7 +2731,39 @@ public class PDFView extends RelativeLayout {
         );
     }
 
+    public List<PdfDocument.HighlightAnnotation> debugPageHighlights(int pageIndex) {
+        if (!debugStateEnabled || pdfFile == null || pageIndex < 0 || pageIndex >= pdfFile.getPagesCount()) {
+            return Collections.emptyList();
+        }
+        try {
+            // Keep the previous snapshot available to UI callbacks while the test hook reads fresh native state.
+            if (!pdfFile.refillPageCaches(pageIndex)) {
+                return Collections.emptyList();
+            }
+            List<PdfDocument.HighlightAnnotation> annotations = pdfFile.peekHighlightAnnotations(pageIndex);
+            return annotations == null ? Collections.<PdfDocument.HighlightAnnotation>emptyList() : annotations;
+        } catch (Throwable throwable) {
+            Log.e(TAG, "debugPageHighlights: failed to read highlights", throwable);
+            return Collections.emptyList();
+        }
+    }
+
+    public PdfDocument.FormField debugFormField(int pageIndex, int annotationIndex) {
+        if (!debugStateEnabled || pdfFile == null || pageIndex < 0 || pageIndex >= pdfFile.getPagesCount()) {
+            return null;
+        }
+        try {
+            return pdfFile.getFormFieldByIndex(pageIndex, annotationIndex);
+        } catch (Throwable throwable) {
+            Log.e(TAG, "debugFormField: failed to read form field", throwable);
+            return null;
+        }
+    }
+
     public RectF findHighlightPdfBounds(int pageIndex, String groupKey, int annotationIndex) {
+        if (debugStateEnabled) {
+            debugFindHighlightPdfBoundsCalls++;
+        }
         if (pdfFile == null || pageIndex < 0 || pageIndex >= pdfFile.getPagesCount()) {
             return null;
         }
@@ -3423,9 +3484,11 @@ public class PDFView extends RelativeLayout {
                 }
                 pageContentChanged(pageIndex);
             }
+            recordDebugSearchHighlight(pageIndex, result);
             return result == null ? emptyArray : result;
         } catch (Throwable throwable) {
             Log.e(TAG, "createHighlightText: An error occurred while highlight search result", throwable);
+            recordDebugSearchHighlight(pageNumber - 1, emptyArray);
             return emptyArray;
         }
     }
@@ -3513,6 +3576,561 @@ public class PDFView extends RelativeLayout {
      */
     public Configurator fromSource(DocumentSource docSource) {
         return new Configurator(docSource);
+    }
+
+    public interface DebugStateSource {
+
+        String loadState();
+
+        String fileHash();
+
+        String docUri();
+
+        boolean autoScrolling();
+
+        boolean saving();
+
+        boolean dirty();
+
+        long dwellMs();
+    }
+
+    private static boolean debugStateEnabled = false;
+
+    private DebugStateSource debugStateSource;
+
+    private boolean debugStatePublishPending;
+
+    private int debugFindHighlightPdfBoundsCalls;
+
+    private int debugSearchHighlightPage = -1;
+
+    private Rect[] debugSearchHighlightRects;
+
+    public static void enableDebugState(boolean enabled) {
+        debugStateEnabled = enabled;
+    }
+
+    public static boolean isDebugStateEnabled() {
+        return debugStateEnabled;
+    }
+
+    public void attachDebugStateSource(DebugStateSource source) {
+        this.debugStateSource = source;
+        publishDebugState();
+    }
+
+    private final Runnable debugStatePublishRunnable = new Runnable() {
+        @Override
+        public void run() {
+            debugStatePublishPending = false;
+            if (!debugStateEnabled) {
+                return;
+            }
+            setContentDescription(debugState());
+        }
+    };
+
+    void publishDebugState() {
+        if (!debugStateEnabled || debugStatePublishPending) {
+            return;
+        }
+        debugStatePublishPending = true;
+        post(debugStatePublishRunnable);
+    }
+
+    public String debugState() {
+        if (!debugStateEnabled) {
+            return "";
+        }
+        StringBuilder out = new StringBuilder(768);
+        appendDebugDocument(out);
+        appendDebugRender(out);
+        appendDebugMotion(out);
+        appendDebugLayout(out);
+        appendDebugGeometry(out);
+        appendDebugContent(out);
+        if (textSelectionManager != null) {
+            textSelectionManager.appendDebugState(out);
+        }
+        return out.toString();
+    }
+
+    private void appendDebugDocument(StringBuilder out) {
+        DebugStateSource source = debugStateSource;
+        debugPut(out, "page", currentPage);
+        debugPut(out, "pageCount", getPageCount());
+        debugPut(out, "focusPage", getVisiblePageIndex());
+        debugPut(out, "loadState", source == null ? "" : debugText(source.loadState()));
+        debugPut(out, "fileHash", source == null ? "" : debugText(source.fileHash()));
+        debugPut(out, "docUri", source == null ? "" : debugText(source.docUri()));
+    }
+
+    private void appendDebugRender(StringBuilder out) {
+        debugPut(out, "state", state.name());
+        debugPut(out, "render", isDebugRenderIdle() ? "idle" : "busy");
+        debugPut(out, "quality", debugQuality());
+        debugPut(out, "renderPending", debugPendingTiles());
+        debugPut(out, "pageGen", getPageGeneration(currentPage));
+    }
+
+    private void appendDebugMotion(StringBuilder out) {
+        debugPut(out, "zoom", debugFloat(zoom));
+        debugPut(out, "minZoom", debugFloat(minZoom));
+        debugPut(out, "midZoom", debugFloat(midZoom));
+        debugPut(out, "maxZoom", debugFloat(maxZoom));
+        debugPut(out, "offsetX", debugFloat(currentXOffset));
+        debugPut(out, "offsetY", debugFloat(currentYOffset));
+        debugPut(out, "positionOffset", debugFloat(getPositionOffset()));
+        ViewState viewState = captureViewState();
+        debugPut(out, "pageOffsetRatio", viewState == null ? "" : debugFloat(viewState.pageCenterOffsetRatio));
+        debugPut(out, "animating", isAnimating());
+        debugPut(out, "flinging", isFlinging());
+        if (pdfFile == null) {
+            debugPut(out, "snapAligned", false);
+            debugPut(out, "snapDelta", "");
+            return;
+        }
+        float delta = debugSnapDelta();
+        debugPut(out, "snapAligned", pageSnap && Math.abs(delta) <= 1f);
+        debugPut(out, "snapDelta", debugFloat(delta));
+    }
+
+    private float debugSnapDelta() {
+        int focus = getVisiblePageIndex();
+        float target = -snapOffsetForPage(focus, findSnapEdge(focus));
+        return (swipeVertical ? currentYOffset : currentXOffset) - target;
+    }
+
+    private void appendDebugLayout(StringBuilder out) {
+        debugPut(out, "swipeVertical", swipeVertical);
+        debugPut(out, "pagesPerRow", pdfFile == null ? pagesPerRow : pdfFile.getPagesPerRow());
+        debugPut(out, "firstPageAlone", pdfFile == null ? firstPageAlone : pdfFile.isFirstPageAlone());
+        debugPut(out, "pageSnap", pageSnap);
+        debugPut(out, "pageFling", pageFling);
+        debugPut(out, "freeScroll", freeScrollMode);
+        debugPut(out, "fitPolicy", pageFitPolicy.name());
+        debugPut(out, "rtl", isHorizontalReadingDirectionRtl());
+        debugPut(out, "spacing", spacingPx);
+        debugPut(out, "rowFirst", getRowFirstPage(currentPage));
+        debugPut(out, "rowLast", getRowLastPage(currentPage));
+        debugPut(out, "zoomLocked", zoomDisabled);
+        debugPut(out, "hSwipeLocked", horizontalSwipeDisabled);
+    }
+
+    private void appendDebugGeometry(StringBuilder out) {
+        debugPut(out, "viewW", getWidth());
+        debugPut(out, "viewH", getHeight());
+        if (pdfFile == null) {
+            debugPut(out, "docLen", "");
+            debugPut(out, "maxPageW", "");
+            debugPut(out, "maxPageH", "");
+            debugPut(out, "pageW", "");
+            debugPut(out, "pageH", "");
+            debugPut(out, "pageRect", "");
+            debugPut(out, "snapOffset", "");
+            return;
+        }
+        SizeF pageSize = pdfFile.getScaledPageSize(currentPage, zoom);
+        float originX = swipeVertical
+                ? pdfFile.getSecondaryPageOffset(currentPage, zoom)
+                : pdfFile.getPageOffset(currentPage, zoom);
+        float originY = swipeVertical
+                ? pdfFile.getPageOffset(currentPage, zoom)
+                : pdfFile.getSecondaryPageOffset(currentPage, zoom);
+        RectF pageRect = new RectF(
+                originX + currentXOffset,
+                originY + currentYOffset,
+                originX + currentXOffset + pageSize.getWidth(),
+                originY + currentYOffset + pageSize.getHeight()
+        );
+        int focus = getVisiblePageIndex();
+        debugPut(out, "docLen", debugFloat(pdfFile.getDocLen(zoom)));
+        debugPut(out, "maxPageW", debugFloat(pdfFile.getMaxPageWidth()));
+        debugPut(out, "maxPageH", debugFloat(pdfFile.getMaxPageHeight()));
+        debugPut(out, "pageW", debugFloat(pageSize.getWidth()));
+        debugPut(out, "pageH", debugFloat(pageSize.getHeight()));
+        debugPut(out, "pageRect", debugRect(pageRect));
+        debugPut(out, "snapOffset", debugFloat(snapOffsetForPage(focus, findSnapEdge(focus))));
+    }
+
+    private void appendDebugContent(StringBuilder out) {
+        DebugStateSource source = debugStateSource;
+        List<PdfDocument.HighlightAnnotation> annotations =
+                pdfFile == null ? null : pdfFile.peekHighlightAnnotations(currentPage);
+        debugPut(out, "annotations", annotations == null ? "" : Integer.toString(annotations.size()));
+        debugPut(out, "autoScrolling", source != null && source.autoScrolling());
+        debugPut(out, "saving", source != null && source.saving());
+        debugPut(out, "dirty", source != null && source.dirty());
+        debugPut(out, "markerPages", debugMarkerPages());
+        debugPut(out, "dwellMs", source == null ? "" : Long.toString(source.dwellMs()));
+        debugPut(out, "hlBoundsCalls", debugFindHighlightPdfBoundsCalls);
+        debugPut(out, "groupCacheMisses",
+                pdfFile == null ? "" : Integer.toString(pdfFile.debugHighlightGroupCacheMisses));
+    }
+
+    private String debugMarkerPages() {
+        StringBuilder pages = new StringBuilder();
+        synchronized (searchMarkerPages) {
+            for (Integer page : searchMarkerPages) {
+                if (pages.length() > 0) {
+                    pages.append(',');
+                }
+                pages.append(page);
+            }
+        }
+        return pages.toString();
+    }
+
+    private boolean isDebugRenderIdle() {
+        if (state != State.SHOWN) {
+            return false;
+        }
+        RenderScheduler scheduler = renderScheduler;
+        if (scheduler == null || scheduler.debugWaveOpen() || scheduler.debugPendingTiles() > 0) {
+            return false;
+        }
+        if (!"full".equals(debugQuality())) {
+            return false;
+        }
+        return !isAnimating() && !isFlinging();
+    }
+
+    private String debugQuality() {
+        if (pdfFile == null || state != State.SHOWN) {
+            return "none";
+        }
+        return pagesLoader.debugQuality();
+    }
+
+    private int debugPendingTiles() {
+        RenderScheduler scheduler = renderScheduler;
+        return scheduler == null ? 0 : scheduler.debugPendingTiles();
+    }
+
+    static void debugPut(StringBuilder out, String key, String value) {
+        if (out.length() > 0) {
+            out.append(';');
+        }
+        out.append(key).append('=').append(value);
+    }
+
+    static void debugPut(StringBuilder out, String key, int value) {
+        debugPut(out, key, Integer.toString(value));
+    }
+
+    static void debugPut(StringBuilder out, String key, boolean value) {
+        debugPut(out, key, value ? "true" : "false");
+    }
+
+    static String debugFloat(float value) {
+        return String.format(Locale.ROOT, "%.3f", value);
+    }
+
+    static String debugRect(RectF rect) {
+        return debugFloat(rect.left) + ',' + debugFloat(rect.top) + ','
+                + debugFloat(rect.right) + ',' + debugFloat(rect.bottom);
+    }
+
+    public void debugSetViewport(float zoom, float offsetX, float offsetY) {
+        if (!debugStateEnabled || pdfFile == null) {
+            return;
+        }
+        animationManager.stopAll();
+        zoomTo(zoom);
+        moveTo(offsetX, offsetY);
+        loadPageByOffset();
+        loadPages();
+        publishDebugState();
+    }
+
+    public void debugSetZoomAtPageOrigin(int pageIndex, float zoom) {
+        if (!debugStateEnabled || pdfFile == null) {
+            return;
+        }
+        int page = pdfFile.determineValidPageNumberFrom(pageIndex);
+        float primary = pdfFile.getPageOffset(page, zoom);
+        float secondary = pdfFile.getSecondaryPageOffset(page, zoom);
+        if (swipeVertical) {
+            debugSetViewport(zoom, -secondary, -primary);
+        } else {
+            debugSetViewport(zoom, -primary, -secondary);
+        }
+    }
+
+    private void recordDebugSearchHighlight(int pageIndex, Rect[] rects) {
+        if (!debugStateEnabled) {
+            return;
+        }
+        debugSearchHighlightPage = pageIndex;
+        debugSearchHighlightRects = rects;
+    }
+
+    public String debugSearchHighlightBounds() {
+        if (!debugStateEnabled) {
+            return "";
+        }
+        StringBuilder out = new StringBuilder(128);
+        debugPut(out, "page", debugSearchHighlightPage);
+        debugPut(out, "count", debugSearchHighlightRects == null ? 0 : debugSearchHighlightRects.length);
+        debugPut(out, "rects", debugSearchHighlightRectList());
+        return out.toString();
+    }
+
+    private String debugSearchHighlightRectList() {
+        if (debugSearchHighlightRects == null) {
+            return "";
+        }
+        StringBuilder rects = new StringBuilder();
+        for (Rect rect : debugSearchHighlightRects) {
+            if (rect == null) {
+                continue;
+            }
+            if (rects.length() > 0) {
+                rects.append('|');
+            }
+            rects.append(rect.left).append(',').append(rect.top).append(',')
+                    .append(rect.right).append(',').append(rect.bottom);
+        }
+        return rects.toString();
+    }
+
+    public static final class DebugCacheStats {
+
+        public final boolean documentOpen;
+
+        public final boolean previewAttached;
+
+        public final int activePartCount;
+
+        public final int passivePartCount;
+
+        public final long activePartBytes;
+
+        public final long passivePartBytes;
+
+        public final boolean partCacheScaling;
+
+        public final int partCacheLimit;
+
+        public final int snapshotCacheLimit;
+
+        public final float partSizePx;
+
+        public final int previewEntryCount;
+
+        public final long previewBytes;
+
+        public final long previewMaxBytes;
+
+        public final int previewBucketWidthPx;
+
+        public final int previewPoolPerBucketCap;
+
+        public final int[] previewPoolBucketWidths;
+
+        public final int[] previewPoolBucketSizes;
+
+        public final int openPageCount;
+
+        public final int openedPageEntryCount;
+
+        public final int renderPageCount;
+
+        public final int textOpenedPageCount;
+
+        public final int pinnedRenderPage;
+
+        public final int maxOpenRenderPages;
+
+        DebugCacheStats(boolean documentOpen, boolean previewAttached, long[] partStats,
+                        long[] previewStats, int[] poolStats, int poolCap, int[] pageStats) {
+            this.documentOpen = documentOpen;
+            this.previewAttached = previewAttached;
+            this.activePartCount = (int) partStats[0];
+            this.passivePartCount = (int) partStats[1];
+            this.activePartBytes = partStats[2];
+            this.passivePartBytes = partStats[3];
+            this.partCacheScaling = partStats[4] != 0;
+            this.partCacheLimit = Constants.Cache.CACHE_SIZE;
+            this.snapshotCacheLimit = Constants.Cache.SNAPSHOTS_CACHE_SIZE;
+            this.partSizePx = Constants.PART_SIZE;
+            this.previewEntryCount = (int) previewStats[0];
+            this.previewBytes = previewStats[1];
+            this.previewMaxBytes = previewStats[2];
+            this.previewBucketWidthPx = (int) previewStats[3];
+            this.previewPoolPerBucketCap = poolCap;
+            this.previewPoolBucketWidths = new int[poolStats.length / 2];
+            this.previewPoolBucketSizes = new int[poolStats.length / 2];
+            for (int i = 0; i < poolStats.length / 2; i++) {
+                this.previewPoolBucketWidths[i] = poolStats[i * 2];
+                this.previewPoolBucketSizes[i] = poolStats[i * 2 + 1];
+            }
+            this.openPageCount = pageStats[0];
+            this.openedPageEntryCount = pageStats[1];
+            this.renderPageCount = pageStats[2];
+            this.textOpenedPageCount = pageStats[3];
+            this.pinnedRenderPage = pageStats[4];
+            this.maxOpenRenderPages = pageStats[5];
+        }
+
+        public int totalPartCount() {
+            return activePartCount + passivePartCount;
+        }
+
+        public long totalPartBytes() {
+            return activePartBytes + passivePartBytes;
+        }
+
+        public int previewPoolSize(int bucketWidthPx) {
+            for (int i = 0; i < previewPoolBucketWidths.length; i++) {
+                if (previewPoolBucketWidths[i] == bucketWidthPx) {
+                    return previewPoolBucketSizes[i];
+                }
+            }
+            return 0;
+        }
+
+        public int previewPoolLargestBucketSize() {
+            int largest = 0;
+            for (int size : previewPoolBucketSizes) {
+                if (size > largest) {
+                    largest = size;
+                }
+            }
+            return largest;
+        }
+
+        public int previewPoolTotalSize() {
+            int total = 0;
+            for (int size : previewPoolBucketSizes) {
+                total += size;
+            }
+            return total;
+        }
+    }
+
+    /**
+     * Peak recorded immediately after a page-part insertion while scaling. CacheManager removes an equal part
+     * from both queues before insertion, so non-zero active and passive tile counts describe disjoint current
+     * and previous tile sets rather than duplicate accounting.
+     */
+    public static final class DebugPartCachePeak {
+
+        public final long observationId;
+        public final int activePartCount;
+        public final int passivePartCount;
+        public final int activeTileCount;
+        public final int passiveTileCount;
+        public final int totalPartCount;
+        public final int scalingInsertions;
+
+        DebugPartCachePeak(long[] stats) {
+            this.observationId = stats[0];
+            this.activePartCount = (int) stats[1];
+            this.passivePartCount = (int) stats[2];
+            this.activeTileCount = (int) stats[3];
+            this.passiveTileCount = (int) stats[4];
+            this.totalPartCount = (int) stats[5];
+            this.scalingInsertions = (int) stats[6];
+        }
+    }
+
+    private static final long[] NO_PART_STATS = new long[]{0, 0, 0, 0, 0};
+
+    private static final long[] NO_PREVIEW_STATS = new long[]{0, 0, 0, 0};
+
+    private static final int[] NO_POOL_STATS = new int[0];
+
+    private static final int[] NO_PAGE_STATS = new int[]{0, 0, 0, 0, -1, 0};
+
+    public static int debugPreviewReuseRecycles() {
+        if (!debugStateEnabled) {
+            return 0;
+        }
+        return AndroidPreviewBitmaps.debugReuseRecycles.get();
+    }
+
+    public static void debugForgetPreviewReuseRecycles() {
+        if (!debugStateEnabled) {
+            return;
+        }
+        AndroidPreviewBitmaps.debugReuseRecycles.set(0);
+    }
+
+    public static int debugPreviewDecodeFailures() {
+        if (!debugStateEnabled) {
+            return 0;
+        }
+        return AndroidPreviewBitmaps.debugDecodeFailures.get();
+    }
+
+    public static void debugForgetPreviewDecodeFailures() {
+        if (!debugStateEnabled) {
+            return;
+        }
+        AndroidPreviewBitmaps.debugDecodeFailures.set(0);
+    }
+
+    public void debugInvalidatePreviewPage(int page) {
+        if (!debugStateEnabled) {
+            return;
+        }
+        PreviewStore<Bitmap> store = previewStore;
+        if (store != null) {
+            store.invalidatePage(page);
+        }
+    }
+
+    public DebugCacheStats readCacheStats() {
+        if (!debugStateEnabled) {
+            return null;
+        }
+        PdfFile file = pdfFile;
+        PreviewStore<Bitmap> store = previewStore;
+        return new DebugCacheStats(
+                file != null,
+                store != null,
+                cacheManager == null ? NO_PART_STATS : cacheManager.debugPartStats(),
+                store == null ? NO_PREVIEW_STATS : store.debugMemoryStats(),
+                store == null ? NO_POOL_STATS : store.debugPoolStats(),
+                store == null ? 0 : store.debugPoolCap(),
+                file == null ? NO_PAGE_STATS : file.debugPageStats()
+        );
+    }
+
+    public long debugResetPartCachePeak() {
+        if (!debugStateEnabled || cacheManager == null) {
+            return -1L;
+        }
+        return cacheManager.debugResetPartPeak();
+    }
+
+    public DebugPartCachePeak debugPartCachePeak() {
+        if (!debugStateEnabled || cacheManager == null) {
+            return null;
+        }
+        return new DebugPartCachePeak(cacheManager.debugPartPeakStats());
+    }
+
+    static String debugText(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        StringBuilder escaped = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char character = value.charAt(i);
+            if (character == '%') {
+                escaped.append("%25");
+            } else if (character == ';') {
+                escaped.append("%3B");
+            } else if (character == '=') {
+                escaped.append("%3D");
+            } else {
+                escaped.append(character);
+            }
+        }
+        return escaped.toString();
     }
 
     private enum State {DEFAULT, LOADED, SHOWN, ERROR}

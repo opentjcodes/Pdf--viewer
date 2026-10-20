@@ -7,6 +7,9 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.util.LruCache
 import android.widget.ImageView
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
+import com.gitlab.mudlej.MjPdfReader.core.debug.LruCacheStats
+import com.gitlab.mudlej.MjPdfReader.core.debug.WeakRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +45,12 @@ class PageThumbnailCache(
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount / 1024
     }
 
+    init {
+        if (BuildConfig.DEBUG) {
+            debugInstances?.add(this)
+        }
+    }
+
     suspend fun pageCount(): Int = withContext(renderDispatcher) {
         extractorOrNull()?.getPageCount() ?: 0
     }
@@ -74,6 +83,26 @@ class PageThumbnailCache(
         }
     }
 
+    fun debugCacheStats(): LruCacheStats? {
+        if (!BuildConfig.DEBUG) {
+            return null
+        }
+        return synchronized(memoryCache) {
+            LruCacheStats(
+                entryCount = memoryCache.snapshot().size,
+                sizeKb = memoryCache.size(),
+                maxSizeKb = memoryCache.maxSize(),
+            )
+        }
+    }
+
+    fun debugCacheKeys(): List<String> {
+        if (!BuildConfig.DEBUG) {
+            return emptyList()
+        }
+        return memoryCache.snapshot().keys.toList()
+    }
+
     fun close() {
         closed = true
         scope.cancel()
@@ -81,6 +110,12 @@ class PageThumbnailCache(
             runCatching { extractor?.close() }
             extractor = null
             memoryCache.evictAll()
+            if (BuildConfig.DEBUG) {
+                debugCacheStats()?.let { stats ->
+                    closedCacheSnapshot = ClosedCacheSnapshot(stats, debugCacheKeys())
+                }
+                debugInstances?.remove(this@PageThumbnailCache)
+            }
         }
     }
 
@@ -121,7 +156,24 @@ class PageThumbnailCache(
 
     private fun bucketFor(widthPx: Int) = WIDTH_BUCKETS.firstOrNull { it >= widthPx } ?: WIDTH_BUCKETS.last()
 
+    data class ClosedCacheSnapshot(val stats: LruCacheStats, val keys: List<String>)
+
     companion object {
+        private val debugInstances = if (BuildConfig.DEBUG) WeakRegistry<PageThumbnailCache>() else null
+
+        @Volatile
+        private var closedCacheSnapshot: ClosedCacheSnapshot? = null
+
+        fun debugLiveInstances(): List<PageThumbnailCache> = debugInstances?.snapshot().orEmpty()
+
+        fun debugClosedCache(): ClosedCacheSnapshot? = if (BuildConfig.DEBUG) closedCacheSnapshot else null
+
+        fun debugForgetClosedCache() {
+            if (BuildConfig.DEBUG) {
+                closedCacheSnapshot = null
+            }
+        }
+
         private const val CROSS_FADE_MILLIS = 150L
         private val WIDTH_BUCKETS = listOf(120, 180, 240, 320, 440, 600)
     }

@@ -24,12 +24,20 @@ class ReadingDirectionResolver(
     )
 
     suspend fun resolve(fileHash: String?, documentUri: Uri?): LoadState {
-        val overrideDirection = fileHash
-            ?.let { pdfRepository.findReadingDirectionOverride(it) }
-            ?.let { ReadingDirection.fromOverrideId(it) }
-        val storedDetectedDirection = fileHash
-            ?.let { pdfRepository.findDetectedReadingDirection(it) }
-            ?.let { ReadingDirection.fromId(it) }
+        val overrideDirection = if (pdf.readingDirectionResolved) {
+            pdf.readingDirectionOverride
+        } else {
+            fileHash
+                ?.let { pdfRepository.findReadingDirectionOverride(it) }
+                ?.let { ReadingDirection.fromOverrideId(it) }
+        }
+        val storedDetectedDirection = if (pdf.readingDirectionResolved) {
+            pdf.detectedReadingDirection
+        } else {
+            fileHash
+                ?.let { pdfRepository.findDetectedReadingDirection(it) }
+                ?.let { ReadingDirection.fromId(it) }
+        }
         if (overrideDirection != null) {
             return LoadState(
                 overrideDirection,

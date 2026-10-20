@@ -546,7 +546,6 @@
     <string name="dracula">Dracula</string>
     <string name="text_size">Taille du texte</string>
     <string name="go_to_page">Aller à la page</string>
-    <string name="no_input">Pas de saisie!</string>
     <string name="go_to">Aller à</string>
     <string name="all_pages">Toutes les pages</string>
     <string name="grid_columns">Colonnes</string>
@@ -662,6 +661,7 @@
     <string name="home_scan_locations_save">Enregistrer</string>
     <string name="home_scan_locations_up">Haut</string>
     <string name="home_menu_scan_locations">Emplacements d\'analyse</string>
+    <string name="home_menu_full_rescan">Relancer une analyse complète</string>
     <string name="home_search_hint">Rechercher dans votre bibliothèque</string>
     <string name="home_tab_recent">Récents</string>
     <string name="home_tab_library">Bibliothèque</string>
@@ -683,7 +683,9 @@
     <string name="home_chip_abandoned">Abandonné</string>
     <string name="home_chip_all_files">Tous les fichiers</string>
     <string name="home_hero_progress_template">%1$d%% · %2$d/%3$d</string>
-    <string name="home_scanning_progress">Analyse… %1$d PDF trouvés</string>
+    <string name="home_scan_finding">Recherche des PDF… %1$d trouvés</string>
+    <string name="home_scan_reading_details">Lecture des détails PDF… %1$d sur %2$d</string>
+    <string name="home_scan_incomplete">Analyse incomplète… %1$d PDF trouvés</string>
     <string name="home_menu_title">Menu de la bibliothèque</string>
     <string name="home_menu_view">Affichage</string>
     <string name="home_menu_stats">Statistiques de la bibliothèque</string>
@@ -894,7 +896,7 @@
     <string name="auto_backup_failure_notice">La dernière sauvegarde automatique a échoué.</string>
     <string name="auto_backup_stale_notice">La sauvegarde automatique n\'a pas été exécutée depuis plus d\'une journée.</string>
     <string name="auto_backup_notice_action">Réglages de sauvegarde</string>
-    <string name="home_recent_permission_message">Vos livres ont besoin de l\'accès aux fichiers pour s\'ouvrir à nouveau. Autorisez l\'accès pour les déverrouiller.</string>
+    <string name="home_recent_permission_message">Certains documents récents ne peuvent pas être vérifiés sans accès aux fichiers. Autorisez l\'accès afin que MJ PDF puisse les vérifier et les ouvrir s\'ils sont toujours disponibles.</string>
     <string name="home_list_badges_title">Badges des fiches en liste</string>
     <string name="home_list_badges_summary">Choisissez les détails affichés sous les noms de fichiers en vue liste.</string>
     <string name="home_badge_pages">Nombre de pages</string>

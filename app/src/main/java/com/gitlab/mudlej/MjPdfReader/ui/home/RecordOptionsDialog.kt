@@ -7,6 +7,7 @@ import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.ui.toast
 import com.gitlab.mudlej.MjPdfReader.databinding.DialogRecordOptionsBinding
 import com.gitlab.mudlej.MjPdfReader.databinding.DialogRenameRecordBinding
 import com.gitlab.mudlej.MjPdfReader.data.entity.ReadingStatus
@@ -117,7 +118,7 @@ class RecordOptionsDialog(
                 val hash = record?.hash ?: resolveContentHash(item) ?: return@launch
                 if (record == null && !pdfRepository.hasRecord(hash)) {
                     if (!historyPolicy.canRecord()) {
-                        Toast.makeText(activity, R.string.history_action_blocked, Toast.LENGTH_SHORT).show()
+                        toast(activity, R.string.history_action_blocked, Toast.LENGTH_SHORT)
                         return@launch
                     }
                     pdfRepository.saveRecordInBackground(newRecord(item, hash))
@@ -194,7 +195,7 @@ class RecordOptionsDialog(
                 resolvedHash = hash
                 if (!pdfRepository.hasRecord(hash)) {
                     if (!historyPolicy.canRecord()) {
-                        Toast.makeText(activity, R.string.history_action_blocked, Toast.LENGTH_SHORT).show()
+                        toast(activity, R.string.history_action_blocked, Toast.LENGTH_SHORT)
                         return@launch
                     }
                     pdfRepository.saveRecordInBackground(newRecord(item, hash))
@@ -221,13 +222,14 @@ class RecordOptionsDialog(
 
     private suspend fun resolveContentHash(item: HomeItem): String? {
         val path = item.uri.path ?: return null
+        val fingerprint = libraryScanner.fingerprintFor(path) ?: return null
         val known = libraryScanner.index.value.entries.find { it.path == path }?.hash
             ?.takeIf { !DocumentIdentity.isLegacy(it) }
         if (known != null) {
             return known
         }
         val computed = withContext(Dispatchers.IO) { DocumentIdentity.of(File(path))?.identity } ?: return null
-        libraryScanner.onHashComputed(path, computed)
+        libraryScanner.onHashComputed(fingerprint, computed)
         return computed
     }
 
@@ -293,7 +295,7 @@ class RecordOptionsDialog(
             try {
                 activity.startActivity(pdfShareIntent(activity, item.uri, fileNameOf(item, record)))
             } catch (e: Throwable) {
-                Toast.makeText(activity, R.string.home_share_failed, Toast.LENGTH_SHORT).show()
+                toast(activity, R.string.home_share_failed, Toast.LENGTH_SHORT)
             }
         }
     }
@@ -322,12 +324,12 @@ class RecordOptionsDialog(
             val target = File(oldFile.parentFile, "$newName.pdf")
 
             if (target.exists()) {
-                Toast.makeText(activity, R.string.home_rename_exists, Toast.LENGTH_SHORT).show()
+                toast(activity, R.string.home_rename_exists, Toast.LENGTH_SHORT)
                 return@launch
             }
             val renamed = withContext(Dispatchers.IO) { oldFile.renameTo(target) }
             if (!renamed) {
-                Toast.makeText(activity, R.string.home_rename_failed, Toast.LENGTH_SHORT).show()
+                toast(activity, R.string.home_rename_failed, Toast.LENGTH_SHORT)
                 return@launch
             }
 
@@ -359,7 +361,7 @@ class RecordOptionsDialog(
                 DocumentRemover.remove(activity, item.uri)
             }
             if (!removal.deleted) {
-                Toast.makeText(activity, R.string.home_delete_failed, Toast.LENGTH_SHORT).show()
+                toast(activity, R.string.home_delete_failed, Toast.LENGTH_SHORT)
                 return@launch
             }
 

@@ -186,6 +186,7 @@ class Preferences(private val prefMan: SharedPreferences) {
         const val sharedCopyModeKey = "sharedCopyMode"
         const val scanModeKey = "scanMode"
         const val scanLocationsKey = "scanLocations"
+        const val scanBaselineScopeKey = "scanBaselineScope"
         const val translationModeKey = "translationMode"
         const val translationEngineKey = "translationEngine"
         const val translationTargetLanguageKey = "translationTargetLanguage"
@@ -533,6 +534,7 @@ class Preferences(private val prefMan: SharedPreferences) {
         return safeGetEnum(sharedCopyModeKey, fallback)
     }
     fun getScanMode() = safeGetEnum<ScanMode>(scanModeKey, scanModeDefault)
+    fun getScanBaselineScope(): String? = safeGetString(scanBaselineScopeKey, null)
     fun getScanLocations(): Set<String> {
         return safeGetStringSet(scanLocationsKey, scanLocationsDefault)?.toSet()
             ?: scanLocationsDefault
@@ -668,5 +670,12 @@ class Preferences(private val prefMan: SharedPreferences) {
     fun setSharedCopyMode(value: SharedCopyMode) = prefMan.edit().putString(sharedCopyModeKey, value.name).apply()
     fun setScanMode(value: ScanMode) = prefMan.edit().putString(scanModeKey, value.name).apply()
     fun setScanLocations(value: Set<String>) = prefMan.edit().putStringSet(scanLocationsKey, value).apply()
+
+    fun setScanScope(mode: ScanMode, locations: Set<String>) = prefMan.edit()
+        .putString(scanModeKey, mode.name)
+        .putStringSet(scanLocationsKey, locations.toSet())
+        .apply()
+
+    fun setScanBaselineScope(value: String) = prefMan.edit().putString(scanBaselineScopeKey, value).apply()
 
 }

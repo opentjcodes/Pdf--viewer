@@ -4,10 +4,13 @@ package com.gitlab.mudlej.MjPdfReader.ui.home
 
 import android.content.Context
 import android.net.Uri
-import com.gitlab.mudlej.MjPdfReader.core.io.UriCanonicalizer
 import java.io.File
 
-enum class Availability { AVAILABLE, LOCKED, MISSING }
+enum class Availability {
+    AVAILABLE,
+    ACCESS_UNKNOWN,
+    MISSING,
+}
 
 class AvailabilityProbe(
     private val context: Context,
@@ -29,19 +32,28 @@ class AvailabilityProbe(
                 val readable = uri.path?.let { File(it).canRead() } == true
                 when {
                     readable -> Availability.AVAILABLE
-                    hasFullAccess -> Availability.MISSING
-                    else -> Availability.LOCKED
-                }
-            }
-            "content" -> {
-                when {
-                    uri.toString() in persistedReadGrants -> Availability.AVAILABLE
-                    UriCanonicalizer.canonicalize(context, uri) != null -> Availability.AVAILABLE
-                    uri.authority == MEDIA_AUTHORITY && !hasFullAccess -> Availability.LOCKED
+                    !hasFullAccess -> Availability.ACCESS_UNKNOWN
                     else -> Availability.MISSING
                 }
             }
+            "content" -> contentAvailability(uri)
             else -> Availability.AVAILABLE
+        }
+    }
+
+    private fun contentAvailability(uri: Uri): Availability {
+        val opens = runCatching {
+            context.contentResolver.openInputStream(uri)?.use { true } ?: false
+        }.getOrDefault(false)
+        if (opens) {
+            return Availability.AVAILABLE
+        }
+
+        val hasPersistedReadGrant = uri.toString() in persistedReadGrants
+        return when {
+            hasPersistedReadGrant -> Availability.MISSING
+            uri.authority == MEDIA_AUTHORITY && !hasFullAccess -> Availability.ACCESS_UNKNOWN
+            else -> Availability.MISSING
         }
     }
 

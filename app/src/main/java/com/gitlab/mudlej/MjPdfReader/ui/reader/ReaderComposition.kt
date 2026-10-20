@@ -23,7 +23,9 @@ import com.github.barteksc.pdfviewer.PDFView.Configurator
 import com.github.barteksc.pdfviewer.listener.OnTextSelectionChangeListener
 import com.github.barteksc.pdfviewer.scroll.DefaultScrollHandle
 import com.github.barteksc.pdfviewer.scroll.ScrollHandle
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.DebugRootDescription
 import com.gitlab.mudlej.MjPdfReader.pdf.PDF
 import com.gitlab.mudlej.MjPdfReader.pdf.grantPdfReadAccess
 import com.gitlab.mudlej.MjPdfReader.data.HistoryPolicy
@@ -172,6 +174,9 @@ class ReaderComposition(
         vm.alwaysHideMarginsAtSettingsOpen = null
         val alwaysHideMargins = pref.getAlwaysHideMargins()
         if (baseline != null && alwaysHideMargins != baseline) {
+            if (!alwaysHideMargins) {
+                cropMarginsController.abandonActiveDetection()
+            }
             setCropMarginsEnabled(alwaysHideMargins)
         }
         activity.displayFromUri(doc.uri)
@@ -258,7 +263,7 @@ class ReaderComposition(
         binding,
         doc,
         { fullScreenOptionsManager.showAllTemporarilyOrHide() },
-        { uri -> activity.shareFile(uri, asImage = true) },
+        { uri, displayName -> activity.shareImage(uri, displayName) },
     )
 
     val annotationController: AnnotationController = AnnotationController(activity, binding, vm, historyPolicy)
@@ -774,6 +779,7 @@ class ReaderComposition(
     private fun toggleIncognito() {
         vm.incognito = !vm.incognito
         vm.pendingIncognitoNotice = vm.incognito
+        annotationController.discardUnrecoverableDirtyState()
         activity.recreate()
     }
 
@@ -924,11 +930,21 @@ class ReaderComposition(
     }
 
     private fun onHistoryChanged() {
+        publishDebugHistory()
         val navState = readerHistory.canGoBack() to readerHistory.canGoForward()
         if (navState != historyNavState) {
             historyNavState = navState
             refreshActions()
         }
+    }
+
+    fun publishDebugHistory() {
+        if (!BuildConfig.DEBUG) {
+            return
+        }
+        val back = readerHistory.backEntries().joinToString(",") { it.pageIndex.toString() }
+        val forward = readerHistory.forwardEntries().joinToString(",") { it.pageIndex.toString() }
+        DebugRootDescription.put(binding.root, "hist", "back=$back;forward=$forward")
     }
 
     private fun toggleSecondBar() {
@@ -1021,7 +1037,6 @@ class ReaderComposition(
     private fun goToPage() {
         showGoToPageDialog(
             activity,
-            binding.root,
             doc.pageNumber,
             doc.length,
             doc.uri,

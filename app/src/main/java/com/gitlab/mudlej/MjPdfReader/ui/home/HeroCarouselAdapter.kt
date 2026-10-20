@@ -5,7 +5,6 @@ package com.gitlab.mudlej.MjPdfReader.ui.home
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.gitlab.mudlej.MjPdfReader.R
 import com.gitlab.mudlej.MjPdfReader.databinding.ItemHomeHeroBookBinding
@@ -16,7 +15,20 @@ class HeroCarouselAdapter(
     private val coverCache: CoverCache,
     private val scope: CoroutineScope,
     private val functions: HomeItemFunctions,
-) : ListAdapter<HomeItem, HeroCarouselAdapter.HeroViewHolder>(HomeItemComparator()) {
+) : RecyclerView.Adapter<HeroCarouselAdapter.HeroViewHolder>() {
+
+    private var items: List<HomeItem> = emptyList()
+
+    val currentItems: List<HomeItem>
+        get() = items
+
+    fun replaceItems(newItems: List<HomeItem>) {
+        if (items == newItems) {
+            return
+        }
+        items = newItems
+        notifyDataSetChanged()
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): HeroViewHolder {
         val binding = ItemHomeHeroBookBinding.inflate(
@@ -26,8 +38,10 @@ class HeroCarouselAdapter(
     }
 
     override fun onBindViewHolder(holder: HeroViewHolder, position: Int) {
-        holder.bind(getItem(position))
+        holder.bind(items[position])
     }
+
+    override fun getItemCount(): Int = items.size
 
     inner class HeroViewHolder(
         private val binding: ItemHomeHeroBookBinding,

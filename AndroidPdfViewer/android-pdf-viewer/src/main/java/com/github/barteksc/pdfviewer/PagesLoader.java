@@ -20,11 +20,13 @@ import static com.github.barteksc.pdfviewer.util.Constants.PRELOAD_OFFSET;
 
 import android.graphics.RectF;
 
+import com.github.barteksc.pdfviewer.model.PagePart;
 import com.github.barteksc.pdfviewer.util.Constants;
 import com.github.barteksc.pdfviewer.util.MathUtils;
 import com.github.barteksc.pdfviewer.util.Util;
 import com.shockwave.pdfium.util.SizeF;
 
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -75,6 +77,47 @@ class PagesLoader {
                     ", rightBottom=" + rightBottom +
                     '}';
         }
+    }
+
+    private static class DebugCell {
+        final int page;
+        final RectF bounds;
+
+        DebugCell(int page, RectF bounds) {
+            this.page = page;
+            this.bounds = bounds;
+        }
+    }
+
+    private final List<DebugCell> debugCells = new ArrayList<>();
+
+    private void debugBeginPass() {
+        if (PDFView.isDebugStateEnabled()) {
+            debugCells.clear();
+        }
+    }
+
+    private void debugRecordCell(int page, RectF pageRelativeBounds) {
+        if (PDFView.isDebugStateEnabled()) {
+            debugCells.add(new DebugCell(page, new RectF(pageRelativeBounds)));
+        }
+    }
+
+    String debugQuality() {
+        if (debugCells.isEmpty()) {
+            return "none";
+        }
+        boolean snapshot = false;
+        for (DebugCell cell : debugCells) {
+            PagePart part = pdfView.cacheManager.debugActivePart(cell.page, cell.bounds);
+            if (part == null || part.isStale() || part.getGeneration() != pdfView.getPageGeneration(cell.page)) {
+                return "preview";
+            }
+            if (part.isSnapshot()) {
+                snapshot = true;
+            }
+        }
+        return snapshot ? "snapshot" : "full";
     }
 
     private class GridSize {
@@ -233,6 +276,7 @@ class PagesLoader {
     }
 
     private void loadVisible() {
+        debugBeginPass();
         int parts = 0;
         float scaledPreloadOffset = preloadOffset;
         float firstXOffset = -xOffset + scaledPreloadOffset;
@@ -292,6 +336,7 @@ class PagesLoader {
         RectF pageRelativeBounds = new RectF(relX, relY, relX + relWidth, relY + relHeight);
 
         if (renderWidth > 0 && renderHeight > 0) {
+            debugRecordCell(page, pageRelativeBounds);
             if (!pdfView.cacheManager.upPartIfContained(page, pageRelativeBounds, cacheOrder)) {
                 pdfView.renderScheduler.submit(RenderTask.tile(page,
                         pageRelativeBounds.left, pageRelativeBounds.top,
@@ -320,6 +365,7 @@ class PagesLoader {
     }
 
     void loadViewportSnapshot() {
+        debugBeginPass();
         xOffset = -MathUtils.max(pdfView.getCurrentXOffset(), 0);
         yOffset = -MathUtils.max(pdfView.getCurrentYOffset(), 0);
         float firstXOffset = -xOffset + preloadOffset;
@@ -347,6 +393,7 @@ class PagesLoader {
         }
 
         RectF pageRelativeBounds = new RectF(relLeft, relTop, relRight, relBottom);
+        debugRecordCell(range.page, pageRelativeBounds);
         if (!pdfView.cacheManager.upPartIfContained(range.page, pageRelativeBounds, cacheOrder)) {
             pdfView.renderScheduler.submit(RenderTask.tile(range.page,
                     pageRelativeBounds.left, pageRelativeBounds.top,

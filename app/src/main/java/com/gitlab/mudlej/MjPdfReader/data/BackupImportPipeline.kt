@@ -5,7 +5,9 @@ package com.gitlab.mudlej.MjPdfReader.data
 import android.content.Context
 import androidx.documentfile.provider.DocumentFile
 import androidx.preference.PreferenceManager
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.BackupDebugHooks
 import com.gitlab.mudlej.MjPdfReader.core.io.restartApplication
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,11 +30,16 @@ object BackupImportPipeline {
         if (running) {
             return false
         }
+        val suppressRestart = BuildConfig.DEBUG && BackupDebugHooks.shouldSuppressRestart(appContext)
         running = true
+        if (BuildConfig.DEBUG) {
+            BackupDebugHooks.noteImportStarted()
+        }
         val preferences = Preferences(PreferenceManager.getDefaultSharedPreferences(appContext))
         val backupManager = BackupManager(appContext, PdfRepository(AppDatabase.getInstance(appContext)))
         scope.launch {
             val plan = try {
+                BackupDebugHooks.awaitImportRelease()
                 backupManager.prepareImport(data)
             } catch (exception: Exception) {
                 val message = appContext.getString(
@@ -44,6 +51,9 @@ object BackupImportPipeline {
                 if (!handled) {
                     preferences.setImportResultPending(message)
                 }
+                if (BuildConfig.DEBUG) {
+                    BackupDebugHooks.noteImportFinished(BackupDebugHooks.OUTCOME_REJECTED)
+                }
                 return@launch
             }
             if (createSafety) {
@@ -54,13 +64,18 @@ object BackupImportPipeline {
                     if (!handled) {
                         preferences.setImportResultPending(safetyError)
                     }
+                    if (BuildConfig.DEBUG) {
+                        BackupDebugHooks.noteImportFinished(BackupDebugHooks.OUTCOME_SAFETY_ABORTED)
+                    }
                     return@launch
                 }
             }
+            var outcome = BackupDebugHooks.OUTCOME_IMPORTED
             try {
                 val summary = backupManager.applyImport(plan)
                 preferences.setImportResultPending(renderSummary(appContext, data, summary))
             } catch (exception: Exception) {
+                outcome = BackupDebugHooks.OUTCOME_FAILED_AFTER_WIPE
                 preferences.setImportResultPending(
                     appContext.getString(
                         R.string.backup_import_failed_after_wipe,
@@ -70,7 +85,12 @@ object BackupImportPipeline {
             }
             AutoBackupScheduler.cancel(appContext)
             running = false
-            withContext(Dispatchers.Main) { restartApplication(appContext) }
+            if (BuildConfig.DEBUG) {
+                BackupDebugHooks.noteImportFinished(outcome)
+            }
+            if (!suppressRestart) {
+                withContext(Dispatchers.Main) { restartApplication(appContext) }
+            }
         }
         return true
     }

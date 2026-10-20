@@ -21,6 +21,7 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.os.Looper;
 import android.os.ParcelFileDescriptor;
+import android.os.SystemClock;
 import android.util.Log;
 import android.util.SparseBooleanArray;
 
@@ -87,6 +88,7 @@ class PdfFile {
     private final Map<Integer, float[]> formFieldRectCache = new ConcurrentHashMap<>();
     private final Map<Integer, Map<String, List<PdfDocument.HighlightAnnotation>>> highlightGroupCache =
             new ConcurrentHashMap<>();
+    int debugHighlightGroupCacheMisses;
     /** Page with maximum width */
     private Size originalMaxWidthPageSize = new Size(0, 0);
     /** Page with maximum height */
@@ -650,7 +652,7 @@ class PdfFile {
             }
             try {
                 warnIfMainThreadFill("openPage");
-                pdfiumCore.openPage(pdfDocument, docPage);
+                openNativePage(pageIndex, docPage);
                 openedPages.put(docPage, true);
                 renderPageOrder.add(docPage);
                 capturePageGeometry(pageIndex, docPage);
@@ -660,6 +662,27 @@ class PdfFile {
                 openedPages.put(docPage, false);
                 throw new PageRenderingException(pageIndex, e);
             }
+        }
+    }
+
+    private void openNativePage(int pageIndex, int docPage) {
+        ReplayMeasurement.Session replayMeasurement = null;
+        if (PDFView.isDebugStateEnabled() && Looper.getMainLooper().isCurrentThread()) {
+            replayMeasurement = ReplayMeasurement.activeSession();
+        }
+        if (replayMeasurement == null) {
+            pdfiumCore.openPage(pdfDocument, docPage);
+            return;
+        }
+        long nativeOpenStartNanos = SystemClock.elapsedRealtimeNanos();
+        try {
+            pdfiumCore.openPage(pdfDocument, docPage);
+            replayMeasurement.recordNativeOpen(
+                    pageIndex, docPage, SystemClock.elapsedRealtimeNanos() - nativeOpenStartNanos, true);
+        } catch (RuntimeException | Error throwable) {
+            replayMeasurement.recordNativeOpen(
+                    pageIndex, docPage, SystemClock.elapsedRealtimeNanos() - nativeOpenStartNanos, false);
+            throw throwable;
         }
     }
 
@@ -802,6 +825,25 @@ class PdfFile {
             pdfiumCore.closePage(pdfDocument, docPage);
             openedPages.delete(docPage);
             renderPageOrder.remove(docPage);
+        }
+    }
+
+    int[] debugPageStats() {
+        synchronized (lock) {
+            int open = 0;
+            for (int i = 0; i < openedPages.size(); i++) {
+                if (openedPages.valueAt(i)) {
+                    open++;
+                }
+            }
+            return new int[]{
+                    open,
+                    openedPages.size(),
+                    renderPageOrder.size(),
+                    textOpenedPages.size(),
+                    pinnedRenderPage,
+                    MAX_OPEN_RENDER_PAGES
+            };
         }
     }
 
@@ -1352,24 +1394,24 @@ class PdfFile {
         }
     }
 
-    void refillPageCaches(int pageIndex) {
+    boolean refillPageCaches(int pageIndex) {
         if (disposed || pdfDocument == null) {
-            return;
+            return false;
         }
         int docPage = documentPage(pageIndex);
         if (docPage < 0) {
-            return;
+            return false;
         }
         try {
             openPage(pageIndex);
         } catch (PageRenderingException e) {
-            return;
+            return false;
         }
         List<PdfDocument.HighlightAnnotation> annotations;
         float[] rects;
         synchronized (lock) {
             if (disposed || pdfDocument == null) {
-                return;
+                return false;
             }
             annotations = pdfiumCore.getHighlightAnnotations(pdfDocument, docPage);
             rects = pdfiumCore.getFormFieldRects(pdfDocument, docPage);
@@ -1380,6 +1422,7 @@ class PdfFile {
         highlightGroupCache.remove(pageIndex);
         highlightAnnotationCache.put(pageIndex, snapshot);
         formFieldRectCache.put(pageIndex, rects);
+        return true;
     }
 
     public List<PdfDocument.HighlightAnnotation> peekHighlightAnnotations(int pageIndex) {
@@ -1391,6 +1434,9 @@ class PdfFile {
         Map<String, List<PdfDocument.HighlightAnnotation>> cached = highlightGroupCache.get(pageIndex);
         if (cached != null) {
             return cached;
+        }
+        if (PDFView.isDebugStateEnabled()) {
+            debugHighlightGroupCacheMisses++;
         }
         Map<String, List<PdfDocument.HighlightAnnotation>> groups = new LinkedHashMap<>();
         for (PdfDocument.HighlightAnnotation annotation : annotations) {
@@ -1586,6 +1632,23 @@ class PdfFile {
             return null;
         }
         return pdfiumCore.getFormFieldAtPoint(pdfDocument, docPage, pdfX, pdfY, tolerance);
+    }
+
+    public PdfDocument.FormField getFormFieldByIndex(int pageIndex, int annotationIndex) {
+        if (disposed || pdfDocument == null) {
+            return null;
+        }
+        warnIfMainThreadFill("getFormFieldByIndex");
+        int docPage = documentPage(pageIndex);
+        if (docPage < 0) {
+            return null;
+        }
+        try {
+            openPage(pageIndex);
+        } catch (PageRenderingException e) {
+            return null;
+        }
+        return pdfiumCore.getFormFieldByIndex(pdfDocument, docPage, annotationIndex);
     }
 
     public boolean setFormFieldText(int pageIndex, int annotationIndex, String text) {

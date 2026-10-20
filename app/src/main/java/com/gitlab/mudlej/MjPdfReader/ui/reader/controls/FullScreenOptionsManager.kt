@@ -17,7 +17,9 @@ import androidx.appcompat.widget.TooltipCompat
 import androidx.core.view.children
 import androidx.transition.ChangeBounds
 import androidx.transition.TransitionManager
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.ReaderTestHooks
 import com.gitlab.mudlej.MjPdfReader.data.Preferences
 import com.gitlab.mudlej.MjPdfReader.databinding.ActivityMainBinding
 import com.gitlab.mudlej.MjPdfReader.ui.reader.ReaderViewModel
@@ -359,24 +361,37 @@ class FullScreenOptionsManager(
                 panel.translationX = slideOffset()
             }
             panel.visibility = View.VISIBLE
-            panel.animate()
+            val animator = panel.animate()
                 .alpha(1f)
                 .translationX(0f)
                 .setDuration(SHOW_ANIMATION_MILLIS)
                 .setInterpolator(DecelerateInterpolator())
-                .start()
+            if (BuildConfig.DEBUG) {
+                animator.setUpdateListener(null)
+            }
+            animator.start()
         } else if (panel.visibility == View.VISIBLE) {
-            panel.animate()
+            val targetTranslationX = slideOffset()
+            val animator = panel.animate()
                 .alpha(0f)
-                .translationX(slideOffset())
+                .translationX(targetTranslationX)
                 .setDuration(HIDE_ANIMATION_MILLIS)
                 .setInterpolator(LinearInterpolator())
                 .withEndAction {
                     panel.visibility = View.GONE
                     panel.alpha = 1f
                     panel.translationX = 0f
+                    if (BuildConfig.DEBUG) {
+                        ReaderTestHooks.fullScreenPanelHideTranslation(0f)
+                    }
                 }
-                .start()
+            if (BuildConfig.DEBUG) {
+                ReaderTestHooks.fullScreenPanelHideStarted(targetTranslationX)
+                animator.setUpdateListener {
+                    ReaderTestHooks.fullScreenPanelHideTranslation(panel.translationX)
+                }
+            }
+            animator.start()
         }
         refreshInfo()
     }

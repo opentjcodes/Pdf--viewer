@@ -2,9 +2,7 @@
 
 package com.gitlab.mudlej.MjPdfReader.ui.reader.load
 
-import android.content.ContentResolver
 import android.net.Uri
-import android.provider.OpenableColumns
 import android.util.Log
 import androidx.core.net.toUri
 import com.github.barteksc.pdfviewer.PDFView
@@ -19,20 +17,17 @@ import com.gitlab.mudlej.MjPdfReader.databinding.ActivityMainBinding
 import com.gitlab.mudlej.MjPdfReader.data.HistoryPolicy
 import com.gitlab.mudlej.MjPdfReader.data.PdfRepository
 import com.gitlab.mudlej.MjPdfReader.data.resolveReadingLayout
-import com.gitlab.mudlej.MjPdfReader.data.entity.PdfRecord
 import com.gitlab.mudlej.MjPdfReader.ui.reader.ReaderUi
 import com.gitlab.mudlej.MjPdfReader.ui.reader.ReaderViewModel
 import com.gitlab.mudlej.MjPdfReader.ui.reader.controls.readingdirection.ReadingDirectionResolver
 import com.gitlab.mudlej.MjPdfReader.core.ui.AppSnackbar
-import com.gitlab.mudlej.MjPdfReader.core.io.UriCanonicalizer
 import com.gitlab.mudlej.MjPdfReader.core.io.getFileName
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.snackbar.Snackbar
 import com.shockwave.pdfium.PdfPasswordException
-import java.io.File
-import java.time.LocalDateTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -56,6 +51,17 @@ class DocumentLoader(
     private var hashErrorShownForToken = -1L
     private val doc get() = vm.doc
     private val context get() = binding.root.context
+
+    private val source = DocumentSource(context)
+    private val records = DocumentRecords(
+        binding = binding,
+        vm = vm,
+        pdfRepository = pdfRepository,
+        historyPolicy = historyPolicy,
+        readingDirectionResolver = readingDirectionResolver,
+        source = source,
+        onRecordAvailable = { fileHash -> emit { it.onRecordAvailable(fileHash) } },
+    )
 
     fun subscribe(listener: DocumentListener) {
         listeners.add(listener)
@@ -109,7 +115,10 @@ class DocumentLoader(
         doc.resetLength()
 
         val scheme = uri.scheme
-        if (scheme != null && (scheme.contains("http") || scheme.contains("org.nextcloud.documents"))) {
+        val isOnline = scheme.equals("http", ignoreCase = true) ||
+            scheme.equals("https", ignoreCase = true) ||
+            scheme?.contains("org.nextcloud.documents") == true
+        if (isOnline) {
             openOnlineDocument(uri)
         }
         else {
@@ -129,43 +138,34 @@ class DocumentLoader(
     }
 
     fun initPdfViewAndLoad(viewConfigurator: Configurator, savePassword: Boolean = false) {
-        val loadToken = vm.currentLoadToken
+        com.gitlab.mudlej.MjPdfReader.core.debug.ReaderTestHooks.noteDocumentLoadStarted()
+        var loadToken = vm.currentLoadToken
         val documentUri = doc.uri
-        val viewState = vm.pendingViewState
+        val previousHash = doc.fileHash
         state = LoadState.Loading
+        scheduleLoadProgress(loadToken, documentUri)
         scope.launch {
-            val hash = doc.fileHash ?: resolveDocumentIdentity(doc.uri)
+            com.gitlab.mudlej.MjPdfReader.core.debug.ReaderTestHooks.awaitDocumentLoadRelease()
+            val hash = if (vm.revalidateDocumentOnLoad) {
+                resolveDocumentIdentity(documentUri) ?: previousHash
+            } else {
+                previousHash ?: resolveDocumentIdentity(documentUri)
+            }
             if (!vm.isCurrent(loadToken, documentUri)) {
                 return@launch
             }
+            vm.revalidateDocumentOnLoad = false
+            if (previousHash != null && hash != null && hash != previousHash && documentUri != null) {
+                emit { it.onDocumentReset() }
+                vm.beginNewDocument(documentUri, pref.getAlwaysHideMargins())
+                doc.password = null
+                loadToken = vm.currentLoadToken
+                ui.updateDirtyUi()
+                scheduleLoadProgress(loadToken, documentUri)
+            }
+            val viewState = vm.pendingViewState
             if (hash == null && doc.pageNumber == 0) {
-                val failedUri = doc.uri
-                val readable = failedUri != null && isUriReadable(failedUri)
-                if (!vm.isCurrent(loadToken, documentUri)) {
-                    return@launch
-                }
-                if (readable) {
-                    showFailedToComputeHashError()
-                } else {
-                    val recoveredFile = failedUri?.let { unreadableUri ->
-                        withContext(Dispatchers.IO) { UriCanonicalizer.canonicalize(context, unreadableUri) }
-                    }
-                    if (!vm.isCurrent(loadToken, documentUri)) {
-                        return@launch
-                    }
-                    val recoveredUri = recoveredFile?.let(Uri::fromFile)
-                    if (recoveredUri != null && recoveredUri != doc.uri) {
-                        withContext(Dispatchers.Main) {
-                            displayFromUri(recoveredUri, savePassword)
-                        }
-                    } else {
-                        val failure = DocumentUnreachableException(failedUri)
-                        state = LoadState.Failed(failure)
-                        withContext(Dispatchers.Main) {
-                            hideProgressBar(loadToken, documentUri)
-                            emit { it.onLoadFailed(failure) }
-                        }
-                    }
+                if (!canLoadWithoutHash(loadToken, documentUri, savePassword)) {
                     return@launch
                 }
             }
@@ -213,9 +213,10 @@ class DocumentLoader(
             doc.readingDirectionOverride = readingDirectionState.overrideDirection
             doc.detectedReadingDirection = readingDirectionState.detectedDirection
             doc.effectiveReadingDirection = readingDirectionState.effectiveDirection
+            doc.readingDirectionResolved = true
             withContext(Dispatchers.Main) {
                 if (vm.isCurrent(loadToken, documentUri)) {
-                    initPdfViewAndLoad(
+                    configureAndLoad(
                         viewConfigurator,
                         pageNumber,
                         savePassword,
@@ -239,7 +240,7 @@ class DocumentLoader(
     ) {
         val zoomDisabled = binding.pdfView.isZoomDisabled
         val horizontalSwipeDisabled = binding.pdfView.isHorizontalSwipeDisabled
-        initPdfViewAndLoad(
+        configureAndLoad(
             configurator,
             pageNumber,
             savePassword = false,
@@ -274,16 +275,35 @@ class DocumentLoader(
         Log.e(TAG, "showFailedToComputeHashError: $message", RuntimeException())
     }
 
-    private suspend fun isUriReadable(uri: Uri): Boolean {
-        return withContext(Dispatchers.IO) {
-            if (uri.scheme == "file") {
-                uri.path?.let { File(it).canRead() } == true
-            } else {
-                runCatching {
-                    context.contentResolver.openInputStream(uri)?.use { } != null
-                }.getOrDefault(false)
+    private suspend fun canLoadWithoutHash(loadToken: Long, documentUri: Uri?, savePassword: Boolean): Boolean {
+        val failedUri = doc.uri
+        val readable = failedUri != null && source.isReadable(failedUri)
+        if (!vm.isCurrent(loadToken, documentUri)) {
+            return false
+        }
+        if (readable) {
+            showFailedToComputeHashError()
+            return true
+        }
+
+        val recoveredFile = failedUri?.let { source.canonicalFile(it) }
+        if (!vm.isCurrent(loadToken, documentUri)) {
+            return false
+        }
+        val recoveredUri = recoveredFile?.let(Uri::fromFile)
+        if (recoveredUri != null && recoveredUri != doc.uri) {
+            withContext(Dispatchers.Main) {
+                displayFromUri(recoveredUri, savePassword)
+            }
+        } else {
+            val failure = DocumentUnreachableException(failedUri)
+            state = LoadState.Failed(failure)
+            withContext(Dispatchers.Main) {
+                hideProgressBar(loadToken, documentUri)
+                emit { it.onLoadFailed(failure) }
             }
         }
+        return false
     }
 
     private suspend fun resolveAnnotationDestination(documentUri: Uri?) {
@@ -307,7 +327,7 @@ class DocumentLoader(
         return CropMargins.fromStorageString(storedCropMargins)
     }
 
-    private fun initPdfViewAndLoad(
+    private fun configureAndLoad(
         viewConfigurator: Configurator,
         pageNumber: Int,
         savePassword: Boolean,
@@ -392,7 +412,7 @@ class DocumentLoader(
         documentUri: Uri?,
     ) {
         scope.launch {
-            persistRecord(savePassword, expectedFileHash, loadToken, documentUri)
+            records.persistRecord(savePassword, expectedFileHash, loadToken, documentUri)
         }
     }
 
@@ -400,133 +420,12 @@ class DocumentLoader(
         val documentUri = doc.uri ?: return
         val loadToken = vm.currentLoadToken
         scope.launch {
-            persistRecord(false, doc.fileHash, loadToken, documentUri)
+            records.persistRecord(false, doc.fileHash, loadToken, documentUri)
             val fileHash = doc.fileHash
             if (fileHash != null && vm.isCurrent(loadToken, documentUri) && historyPolicy.canRecord()) {
                 pdfRepository.setPageNumber(fileHash, doc.pageNumber)
             }
         }
-    }
-
-    private suspend fun persistRecord(
-        savePassword: Boolean,
-        expectedFileHash: String?,
-        loadToken: Long,
-        documentUri: Uri?,
-    ) {
-        val password = if (savePassword) doc.password else null
-        val documentTitle = runCatching { binding.pdfView.documentMeta?.title }
-            .getOrNull()
-            ?.takeIf { it.isNotBlank() }
-        if (!vm.isCurrent(loadToken, documentUri)) {
-            return
-        }
-
-        if (doc.fileHash == null && expectedFileHash == null) {
-            val computedHash = resolveDocumentIdentity(doc.uri)
-            if (!vm.isCurrent(loadToken, documentUri)) {
-                return
-            }
-            doc.fileHash = computedHash
-        }
-        if (!vm.isCurrent(loadToken, documentUri)) {
-            return
-        }
-
-        val fileHash = expectedFileHash ?: doc.fileHash
-        if (fileHash == null) {
-            Log.e(TAG, "createPdfRecord: Failed to compute fileHash while creating PdfRecord")
-            return
-        }
-        doc.fileHash = fileHash
-
-        if (!historyPolicy.canRecord()) {
-            emit { it.onRecordAvailable(fileHash) }
-            return
-        }
-
-        if (pdfRepository.hasRecord(fileHash)) {
-            if (!vm.isCurrent(loadToken, documentUri)) {
-                return
-            }
-            pdfRepository.setLastOpened(fileHash, LocalDateTime.now())
-            if (!vm.isCurrent(loadToken, documentUri)) {
-                return
-            }
-            pdfRepository.setLength(fileHash, doc.length)
-            if (!vm.isCurrent(loadToken, documentUri)) {
-                return
-            }
-            updateRecordUri(fileHash)
-            if (!vm.isCurrent(loadToken, documentUri)) {
-                return
-            }
-            if (documentTitle != null) {
-                pdfRepository.setDocumentTitle(fileHash, documentTitle)
-            }
-            if (!vm.isCurrent(loadToken, documentUri)) {
-                return
-            }
-            if (password != null) {
-                pdfRepository.setPassword(fileHash, password)
-            }
-            if (!vm.isCurrent(loadToken, documentUri)) {
-                return
-            }
-            doc.autoScrollSpeed?.let { pdfRepository.setAutoScrollSpeed(fileHash, it) }
-            if (!vm.isCurrent(loadToken, documentUri)) {
-                return
-            }
-            readingDirectionResolver.saveState(fileHash)
-            if (!vm.isCurrent(loadToken, documentUri)) {
-                return
-            }
-            emit { it.onRecordAvailable(fileHash) }
-        }
-        else {
-            if (!vm.isCurrent(loadToken, documentUri)) {
-                return
-            }
-            val record = doc.toPdfRecord(fileHash, password)
-            pdfRepository.saveRecordInBackground(record)
-            if (!vm.isCurrent(loadToken, documentUri)) {
-                return
-            }
-            if (documentTitle != null) {
-                pdfRepository.setDocumentTitle(fileHash, documentTitle)
-            }
-            if (!vm.isCurrent(loadToken, documentUri)) {
-                return
-            }
-            updateRecordUri(fileHash)
-            if (!vm.isCurrent(loadToken, documentUri)) {
-                return
-            }
-            doc.autoScrollSpeed?.let { pdfRepository.setAutoScrollSpeed(fileHash, it) }
-            if (!vm.isCurrent(loadToken, documentUri)) {
-                return
-            }
-            emit { it.onRecordAvailable(fileHash) }
-        }
-    }
-
-    private suspend fun updateRecordUri(fileHash: String) {
-        val currentUri = doc.uri ?: return
-        val canonicalFile = withContext(Dispatchers.IO) { UriCanonicalizer.canonicalize(context, currentUri) }
-        val durableUri = canonicalFile?.let(Uri::fromFile) ?: currentUri
-        val storedUri = pdfRepository.findRecord(fileHash)?.uri
-        if (storedUri?.toString() == durableUri.toString()) {
-            return
-        }
-        if (canonicalFile == null && storedUri != null && isUriReadable(storedUri)) {
-            return
-        }
-        pdfRepository.updateRecordIdentity(
-            fileHash,
-            durableUri,
-            doc.name.removeSuffix(".pdf"),
-            LocalDateTime.now(),
-        )
     }
 
     private fun setCurrentPage(
@@ -576,7 +475,7 @@ class DocumentLoader(
     }
 
     private suspend fun attachPreviewDiskIfCurrent(fileHash: String, loadToken: Long, documentUri: Uri?) {
-        val sizeBytes = resolveDocumentSize(doc.uri)
+        val sizeBytes = source.sizeBytes(doc.uri)
         if (!vm.isCurrent(loadToken, documentUri)) {
             return
         }
@@ -591,30 +490,19 @@ class DocumentLoader(
         )
     }
 
-    private suspend fun resolveDocumentSize(uri: Uri?): Long? {
-        if (uri == null) {
-            return null
-        }
-        return withContext(Dispatchers.IO) {
-            OnlineDocumentStore.fileFor(context, uri.toString())?.let { return@withContext it.length() }
-            runCatching {
-                when (uri.scheme) {
-                    ContentResolver.SCHEME_CONTENT ->
-                        context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
-                            val index = cursor.getColumnIndex(OpenableColumns.SIZE)
-                            if (cursor.moveToFirst() && index >= 0 && !cursor.isNull(index)) cursor.getLong(index) else null
-                        }
-                    ContentResolver.SCHEME_FILE -> uri.path?.let { path -> File(path).length().takeIf { it > 0 } }
-                    else -> null
-                }
-            }.getOrNull()
-        }
-    }
-
     private fun reportLoadPageError(page: Int, error: Throwable) {
         val message = context.resources.getString(R.string.cannot_load_page) + page + " " + error
         AppSnackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
         Log.e(TAG, message)
+    }
+
+    private fun scheduleLoadProgress(loadToken: Long, documentUri: Uri?) {
+        scope.launch {
+            delay(LOCAL_LOAD_PROGRESS_DELAY_MS)
+            if (vm.isCurrent(loadToken, documentUri) && state == LoadState.Loading) {
+                ui.showProgress()
+            }
+        }
     }
 
     private fun hideProgressBar(loadToken: Long, documentUri: Uri?) {
@@ -625,6 +513,7 @@ class DocumentLoader(
 
     private companion object {
         const val TAG = "DocumentLoader"
+        const val LOCAL_LOAD_PROGRESS_DELAY_MS = 150L
         const val TILE_CACHE_PIXEL_BUDGET = 2 * 120 * 256 * 256
         const val MIN_TILE_CACHE_SIZE = 24
         const val MAX_TILE_CACHE_SIZE = 480

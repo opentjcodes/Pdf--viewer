@@ -25,6 +25,7 @@ class HomeMenuDialog(
     private val onShowStats: () -> Unit,
     private val hasFullAccess: () -> Boolean,
     private val onScanLocations: () -> Unit,
+    private val onFullRescan: () -> Unit,
 ) {
 
     fun show() {
@@ -69,6 +70,12 @@ class HomeMenuDialog(
         binding.scanLocationsRow.setOnClickListener {
             dialog.dismiss()
             onScanLocations()
+        }
+        binding.fullRescanRow.visibility =
+            if (hasFullAccess() && pref.getScanMode() != ScanMode.NOT_CONFIGURED) View.VISIBLE else View.GONE
+        binding.fullRescanRow.setOnClickListener {
+            dialog.dismiss()
+            onFullRescan()
         }
         binding.openOnlineRow.setOnClickListener {
             dialog.dismiss()

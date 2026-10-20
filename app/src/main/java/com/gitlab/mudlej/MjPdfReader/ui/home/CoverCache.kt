@@ -8,6 +8,8 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.LruCache
 import android.widget.ImageView
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
+import com.gitlab.mudlej.MjPdfReader.core.debug.LruCacheStats
 import com.gitlab.mudlej.MjPdfReader.data.OnlineDocumentStore
 import com.shockwave.pdfium.PdfiumCore
 import java.io.File
@@ -97,6 +99,28 @@ class CoverCache private constructor(private val context: Context) {
         }
     }
 
+    fun debugCacheStats(): LruCacheStats? {
+        if (!BuildConfig.DEBUG) {
+            return null
+        }
+        return synchronized(memoryCache) {
+            LruCacheStats(
+                entryCount = memoryCache.snapshot().size,
+                sizeKb = memoryCache.size(),
+                maxSizeKb = memoryCache.maxSize(),
+            )
+        }
+    }
+
+    suspend fun debugIdleCacheStats(): LruCacheStats? {
+        if (!BuildConfig.DEBUG) return null
+        return inFlightMutex.withLock {
+            if (inFlight.isEmpty()) debugCacheStats() else null
+        }
+    }
+
+    fun debugEvictionCount(): Int? = if (BuildConfig.DEBUG) memoryCache.evictionCount() else null
+
     fun clearAllBlocking() {
         memoryCache.evictAll()
         coverDir.listFiles()?.forEach { it.delete() }
@@ -185,6 +209,13 @@ class CoverCache private constructor(private val context: Context) {
         private const val MAX_DISK_BYTES = 64L * 1024 * 1024
         private const val CROSS_FADE_MILLIS = 150L
         private val BUCKETS = listOf(160, 320, 640)
+
+        fun debugCacheStatsIfInitialized(): LruCacheStats? {
+            if (!BuildConfig.DEBUG) {
+                return null
+            }
+            return INSTANCE?.debugCacheStats()
+        }
 
         fun getInstance(context: Context): CoverCache {
             INSTANCE?.let { return it }

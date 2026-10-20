@@ -26,7 +26,7 @@ Install Android Studio, then open:
 
 Install these SDK components:
 
-- Android SDK Platform `API 34`
+- Android SDK Platform `API 36`
 - Android SDK Build-Tools
 - Android SDK Platform-Tools
 - Android SDK Command-line Tools
@@ -64,18 +64,37 @@ ls /home/user/Android/Sdk/ndk
 Then run the dependency build script with `ANDROID_NDK` pointing to that NDK directory:
 
 ```bash
-ANDROID_NDK=/home/user/Android/Sdk/ndk/30.0.14904198 python build_dependencies.py
+ANDROID_NDK=/home/user/Android/Sdk/ndk/30.0.14904198 python3 build_dependencies.py
 ```
 
 Replace `30.0.14904198` with the NDK version installed on your machine.
 
-By default the script builds PDFium from source, which needs depot_tools plus gn and ninja and takes a while. For a faster setup, pass `--pdfium prebuilt` to download the prebuilt PDFium instead. Add `--abi <abi>` (for example `--abi arm64-v8a`) to build a single architecture rather than all four.
+This is the single entrypoint for native dependency and JNI builds. Add
+`--abi arm64-v8a` to build one architecture, or `--dry-run` to inspect the selected
+revision, patches and steps without fetching or modifying files.
 
-The script downloads/builds the native PDF dependencies and places the resulting `.so` files under:
+By default it fetches the exact PDFium revision from
+[`build_dependencies/patches/pdfium/series.json`](build_dependencies/patches/pdfium/series.json),
+syncs its DEPS and strictly applies the local patches before building. This needs
+depot_tools, GN and Ninja and can take a while. The source profile also contains
+the Android GN settings. See the [patchset maintenance guide](build_dependencies/patches/pdfium/README.md).
+
+Prepared source caches are revision/profile-specific. Existing checkouts are not
+reset or cleaned; unknown local edits and incomplete caches stop preparation.
+
+`--pdfium prebuilt` explicitly downloads an **unpatched** comparison build without
+the local Arabic fixes. It is not a fallback when patch application fails.
+
+The script places dependency libraries under:
 
 ```text
 PdfiumAndroid/src/main/jni/lib
 ```
+
+It then builds JNI and places the libraries Gradle packages under
+`PdfiumAndroid/src/main/libs`. After changing only JNI code, use the same
+entrypoint with `--native-only`. Do not combine it with `--fresh`, which removes
+the libraries JNI needs.
 
 ## 5. Run it with Android Studio
 At this point Android Studio should be able to run it with no issues.

@@ -36,12 +36,18 @@ class TableOfContentsViewHolder(
         } else {
             null
         }
-        binding.root.isClickable = resolvable
-        binding.root.setOnClickListener(onClick)
-        binding.bookmarkText.setOnClickListener(onClick)
-        binding.bookmarkPageNumber.setOnClickListener(onClick)
+        bindEntryClickTarget(binding.root, onClick)
+        bindEntryClickTarget(binding.bookmarkText, onClick)
+        bindEntryClickTarget(binding.bookmarkPageNumber, onClick)
 
         bindToggle(row)
+    }
+
+    private fun bindEntryClickTarget(target: View, listener: View.OnClickListener?) {
+        target.setOnClickListener(listener)
+        val actionable = listener != null
+        target.isClickable = actionable
+        target.isFocusable = actionable
     }
 
     private fun bindToggle(row: TableOfContentsRow) {

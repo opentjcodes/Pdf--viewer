@@ -1,0 +1,44 @@
+{
+  "url": "https://pdfium.googlesource.com/pdfium.git",
+  "revision": "d13ede8e6034ed7a65c4cbd0ab7b76211a63a600",
+  "gn_args": [
+    "target_os = \"android\"",
+    "is_debug = false",
+    "is_component_build = false",
+    "pdf_is_standalone = true",
+    "pdf_use_partition_alloc = false",
+    "pdf_enable_v8 = false",
+    "pdf_enable_xfa = false",
+    "pdf_use_skia = false",
+    "enable_rust = false",
+    "clang_use_chrome_plugins = false",
+    "symbol_level = 1",
+    "optimize_for_size = false",
+    "use_thin_lto = false",
+    "use_siso = false",
+    "use_remoteexec = false",
+    "default_min_sdk_version = 23"
+  ],
+  "patches": [
+    {
+      "file": "standalone.patch",
+      "sha256": "11dc47d311d39b7d0a60f853889c738df46efc28800ffa58bd0d7b673768ec25"
+    },
+    {
+      "file": "arabic-01-actualtext.patch",
+      "sha256": "f680941b7dfe610575132d52f81fb12fd36078370799a036cc542173066c83aa"
+    },
+    {
+      "file": "arabic-02-logical-units.patch",
+      "sha256": "91091df7105cc479a8d54d2eb8958b4fd10b60a17b3d6aa3671fa37e4ca8e266"
+    },
+    {
+      "file": "arabic-03-rtl-semantic.patch",
+      "sha256": "7fe2b18fb2b00cc369a6187deb682685c4fab571150fd26b4304d013c6038a27"
+    },
+    {
+      "file": "arabic-04-detached-marks.patch",
+      "sha256": "e3a55cb5beabfbb2a8942a3ceadee8747f438595266e71e6abccbd7a970e4ae4"
+    }
+  ]
+}

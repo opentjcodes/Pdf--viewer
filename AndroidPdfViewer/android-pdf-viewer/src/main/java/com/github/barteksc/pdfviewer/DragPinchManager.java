@@ -40,6 +40,7 @@ class DragPinchManager implements GestureDetector.OnGestureListener, GestureDete
     private static final float HORIZONTAL_BREAKOUT_SLOP_MULTIPLIER = 3f;
 
     private enum AxisLock { UNDECIDED, VERTICAL, FREE }
+    private enum ConsumedTapState { NONE, AWAITING_CONFIRMATION, DISCARDED }
 
     private PDFView pdfView;
     private AnimationManager animationManager;
@@ -53,6 +54,8 @@ class DragPinchManager implements GestureDetector.OnGestureListener, GestureDete
     private boolean enabled = false;
     private AxisLock axisLock = AxisLock.UNDECIDED;
     private float lockedHorizontalResistance = 0f;
+    private ConsumedTapState consumedTapState = ConsumedTapState.NONE;
+    private long consumedTapDownTime;
     private final int touchSlop;
 
     DragPinchManager(PDFView pdfView, AnimationManager animationManager) {
@@ -71,6 +74,9 @@ class DragPinchManager implements GestureDetector.OnGestureListener, GestureDete
     void disable() {
         enabled = false;
         scaling = false;
+        if (consumedTapState == ConsumedTapState.AWAITING_CONFIRMATION) {
+            consumedTapState = ConsumedTapState.DISCARDED;
+        }
         pdfView.cacheManager.setScaling(false);
     }
 
@@ -80,29 +86,54 @@ class DragPinchManager implements GestureDetector.OnGestureListener, GestureDete
 
     @Override
     public boolean onSingleTapConfirmed(MotionEvent e) {
-        TextSelectionManager textSelectionManager = pdfView.getTextSelectionManager();
-        if (textSelectionManager != null && textSelectionManager.handleSingleTap(e.getX(), e.getY())) {
-            return true;
+        ConsumedTapState state = consumeTapConfirmation(e);
+        if (state == ConsumedTapState.DISCARDED) {
+            return false;
+        }
+        if (state == ConsumedTapState.NONE) {
+            TextSelectionManager textSelectionManager = pdfView.getTextSelectionManager();
+            if (textSelectionManager != null && textSelectionManager.handleSingleTap(e.getX(), e.getY())) {
+                return true;
+            }
+
+            if (!pdfView.callbacks.callOnTap(e)) {
+                pdfView.performLinkTap(e.getX(), e.getY());
+            }
         }
 
-        if (!pdfView.callbacks.callOnTap(e)) {
-            pdfView.performLinkTap(e.getX(), e.getY());
+        completeSingleTapConfirmation();
+        return true;
+    }
+
+    private ConsumedTapState consumeTapConfirmation(MotionEvent event) {
+        ConsumedTapState state = ConsumedTapState.NONE;
+        if (!enabled) {
+            state = ConsumedTapState.DISCARDED;
+        } else if (consumedTapState != ConsumedTapState.NONE && consumedTapDownTime == event.getDownTime()) {
+            state = consumedTapState;
         }
+        clearConsumedTapUp();
+        return state;
+    }
 
-        /*
-         * I added the following to update the scroll handle
-         * when position whenever the pdf is tapped.
-         */
-
+    private void completeSingleTapConfirmation() {
         ScrollHandle ps = pdfView.getScrollHandle();
         if (ps != null) {
-            //ps.setScroll((float)pdfView.getCurrentPage() / pdfView.getPageCount());
-            // this is much moe accurate
             ps.setScroll(pdfView.getPositionOffset());
         }
 
         pdfView.performClick();
-        return true;
+    }
+
+    private void clearConsumedTapUp() {
+        consumedTapState = ConsumedTapState.NONE;
+        consumedTapDownTime = 0L;
+    }
+
+    private void clearConsumedTapUp(long downTime) {
+        if (consumedTapState != ConsumedTapState.NONE && consumedTapDownTime == downTime) {
+            clearConsumedTapUp();
+        }
     }
 
 
@@ -137,6 +168,7 @@ class DragPinchManager implements GestureDetector.OnGestureListener, GestureDete
 
     @Override
     public boolean onDoubleTap(MotionEvent e) {
+        clearConsumedTapUp(e.getDownTime());
         if (!pdfView.isDoubleTapEnabled() || pdfView.isZoomDisabled()) {
             return false;
         }
@@ -167,6 +199,7 @@ class DragPinchManager implements GestureDetector.OnGestureListener, GestureDete
         animationManager.stopFling();
         axisLock = AxisLock.UNDECIDED;
         lockedHorizontalResistance = 0f;
+        clearConsumedTapUp();
         return true;
     }
 
@@ -177,7 +210,14 @@ class DragPinchManager implements GestureDetector.OnGestureListener, GestureDete
 
     @Override
     public boolean onSingleTapUp(MotionEvent e) {
-        return pdfView.callbacks.callOnTapUp(e);
+        boolean consumed = pdfView.callbacks.callOnTapUp(e);
+        if (consumed) {
+            consumedTapState = ConsumedTapState.AWAITING_CONFIRMATION;
+            consumedTapDownTime = e.getDownTime();
+        } else {
+            clearConsumedTapUp();
+        }
+        return consumed;
     }
 
     @Override
@@ -383,6 +423,7 @@ class DragPinchManager implements GestureDetector.OnGestureListener, GestureDete
         if (event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
             axisLock = AxisLock.UNDECIDED;
             lockedHorizontalResistance = 0f;
+            clearConsumedTapUp(event.getDownTime());
         }
         if (textSelectionManager != null && textSelectionManager.handleTouch(event)) {
             return true;

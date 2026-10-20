@@ -16,6 +16,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.StorageAccessOverride
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 class PermissionManager(
@@ -28,12 +29,14 @@ class PermissionManager(
 
     fun hasFullAccess(): Boolean = hasFullAccess(activity)
 
-    fun recheck() {
+    fun recheck(): Boolean {
         val access = hasFullAccess()
-        if (access != lastKnownAccess) {
-            lastKnownAccess = access
-            onAccessChanged(access)
+        if (access == lastKnownAccess) {
+            return false
         }
+        lastKnownAccess = access
+        onAccessChanged(access)
+        return true
     }
 
     fun requestFullAccess() {
@@ -110,12 +113,16 @@ class PermissionManager(
     companion object {
 
         fun hasFullAccess(context: Context): Boolean {
-            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 Environment.isExternalStorageManager()
             } else {
                 ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) ==
                     PackageManager.PERMISSION_GRANTED
             }
+            if (BuildConfig.DEBUG) {
+                return StorageAccessOverride.apply(granted)
+            }
+            return granted
         }
     }
 }

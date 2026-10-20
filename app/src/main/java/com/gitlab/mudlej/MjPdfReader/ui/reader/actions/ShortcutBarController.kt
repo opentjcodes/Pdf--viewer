@@ -8,6 +8,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.widget.AppCompatImageView
+import com.gitlab.mudlej.MjPdfReader.core.ui.toast
 import com.gitlab.mudlej.MjPdfReader.data.Preferences
 import com.gitlab.mudlej.MjPdfReader.databinding.ActivityMainBinding
 
@@ -58,7 +59,7 @@ class ShortcutBarController(
             setPadding(paddingHorizontal, paddingVertical, paddingHorizontal, paddingVertical)
             setOnClickListener { actionResolver.perform(action.id) }
             setOnLongClickListener {
-                Toast.makeText(context, configuredAction.titleRes, Toast.LENGTH_SHORT).show()
+                toast(context, configuredAction.titleRes, Toast.LENGTH_SHORT)
                 true
             }
         }

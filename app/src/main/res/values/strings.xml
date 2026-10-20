@@ -670,7 +670,6 @@
     <string name="dracula">Dracula</string>
     <string name="text_size">Text Size</string>
     <string name="go_to_page">Go To Page</string>
-    <string name="no_input">No Input!</string>
     <string name="go_to">Go To</string>
     <string name="all_pages">All Pages</string>
     <string name="grid_columns">Columns</string>
@@ -778,7 +777,7 @@
     <string name="storage_permission_continue">Continue</string>
     <string name="storage_permission_not_now">Not Now</string>
     <string name="storage_permission_grant">Allow Access</string>
-    <string name="home_recent_permission_message">Your books need file access to open again. Allow access to unlock them.</string>
+    <string name="home_recent_permission_message">Some recent documents cannot be checked without file access. Allow access so MJ PDF can check and open them if they are still available.</string>
     <string name="home_permission_card_message">Allow file access to build your library from the PDFs on this device.</string>
     <string name="home_scan_setup_message">Choose where MJ PDF should look for PDF files to build your library.</string>
     <string name="home_scan_setup_button">Scan for PDFs</string>
@@ -789,6 +788,7 @@
     <string name="home_scan_locations_save">Save</string>
     <string name="home_scan_locations_up">Up</string>
     <string name="home_menu_scan_locations">Scan locations</string>
+    <string name="home_menu_full_rescan">Full rescan</string>
     <string name="home_search_hint">Search your library</string>
     <string name="home_tab_recent">Recent</string>
     <string name="home_tab_library">Library</string>
@@ -810,7 +810,9 @@
     <string name="home_chip_abandoned">Abandoned</string>
     <string name="home_chip_all_files">All Files</string>
     <string name="home_hero_progress_template">%1$d%% · %2$d/%3$d</string>
-    <string name="home_scanning_progress">Scanning… %1$d PDFs found</string>
+    <string name="home_scan_finding">Finding PDFs… %1$d found</string>
+    <string name="home_scan_reading_details">Reading PDF details… %1$d of %2$d</string>
+    <string name="home_scan_incomplete">Scan incomplete… %1$d PDFs found</string>
     <string name="home_menu_title">Library Menu</string>
     <string name="home_menu_view">View</string>
     <string name="home_menu_stats">Library Stats</string>

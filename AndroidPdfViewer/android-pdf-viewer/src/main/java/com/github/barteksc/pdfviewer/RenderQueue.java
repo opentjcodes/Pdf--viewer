@@ -31,6 +31,7 @@ class RenderQueue {
     private boolean stopped;
     private volatile boolean flinging;
     private IdleProducer idleProducer;
+    private int debugOpenWaves;
 
     RenderQueue(GenerationSource generationSource) {
         this.generationSource = generationSource;
@@ -39,6 +40,9 @@ class RenderQueue {
     synchronized void beginWave(WaveKind kind) {
         if (stopped) {
             return;
+        }
+        if (PDFView.isDebugStateEnabled()) {
+            debugOpenWaves++;
         }
         liveWaveId++;
         liveWaveKind = kind;
@@ -51,10 +55,30 @@ class RenderQueue {
         if (stopped) {
             return;
         }
+        if (debugOpenWaves > 0) {
+            debugOpenWaves--;
+        }
         if (inFlightOrphanPending && inFlight != null) {
             inFlight.cancelFromQueue();
             inFlightOrphanPending = false;
         }
+    }
+
+    synchronized boolean debugWaveOpen() {
+        return debugOpenWaves > 0;
+    }
+
+    synchronized int debugPendingTiles() {
+        int pending = 0;
+        for (RenderTask task : queued) {
+            if (task.kind == RenderTask.Kind.TILE) {
+                pending++;
+            }
+        }
+        if (inFlight != null && inFlight.kind == RenderTask.Kind.TILE) {
+            pending++;
+        }
+        return pending;
     }
 
     synchronized void submit(RenderTask task) {

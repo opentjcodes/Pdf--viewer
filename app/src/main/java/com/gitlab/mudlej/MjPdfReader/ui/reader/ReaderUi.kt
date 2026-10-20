@@ -9,6 +9,7 @@ interface ReaderUi {
     fun updateActionBar()
     fun updateDirtyUi()
     fun updateDirtyUiPosition()
+    fun showProgress()
     fun hideProgress()
     fun checkHasFile(): Boolean
     fun runAfterDirtyAnnotationPrompt(action: PostSaveAction, uri: Uri? = null)

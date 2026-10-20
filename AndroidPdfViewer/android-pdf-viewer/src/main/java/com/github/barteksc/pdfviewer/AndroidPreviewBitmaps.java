@@ -13,10 +13,14 @@ import com.github.barteksc.pdfviewer.preview.PreviewBitmapPool;
 import com.github.barteksc.pdfviewer.preview.PreviewCodec;
 
 import java.io.ByteArrayOutputStream;
+import java.util.concurrent.atomic.AtomicInteger;
 
 final class AndroidPreviewBitmaps implements PreviewBitmapAdapter<Bitmap>, PreviewCodec<Bitmap> {
 
     private static final int JPEG_QUALITY = 80;
+
+    static final AtomicInteger debugReuseRecycles = new AtomicInteger();
+    static final AtomicInteger debugDecodeFailures = new AtomicInteger();
 
     private final int bucketWidth;
     private volatile PreviewBitmapPool<Bitmap> pool;
@@ -99,8 +103,10 @@ final class AndroidPreviewBitmaps implements PreviewBitmapAdapter<Bitmap>, Previ
         if (reuse != null) {
             options.inMutable = true;
             options.inBitmap = reuse;
+            boolean decodeAttempted = false;
             synchronized (reuse) {
                 if (!reuse.isRecycled()) {
+                    decodeAttempted = true;
                     try {
                         Bitmap decoded = BitmapFactory.decodeByteArray(data, 0, data.length, options);
                         if (decoded != null) {
@@ -110,14 +116,22 @@ final class AndroidPreviewBitmaps implements PreviewBitmapAdapter<Bitmap>, Previ
                     }
                 }
             }
+            if (decodeAttempted && PDFView.isDebugStateEnabled()) {
+                debugReuseRecycles.incrementAndGet();
+            }
             recycle(reuse);
             options.inBitmap = null;
             options.inMutable = false;
         }
+        Bitmap decoded;
         try {
-            return BitmapFactory.decodeByteArray(data, 0, data.length, options);
+            decoded = BitmapFactory.decodeByteArray(data, 0, data.length, options);
         } catch (RuntimeException retry) {
-            return null;
+            decoded = null;
         }
+        if (decoded == null && PDFView.isDebugStateEnabled()) {
+            debugDecodeFailures.incrementAndGet();
+        }
+        return decoded;
     }
 }

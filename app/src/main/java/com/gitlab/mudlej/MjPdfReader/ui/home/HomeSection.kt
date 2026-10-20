@@ -22,5 +22,11 @@ sealed class HomeSection {
         @StringRes val messageRes: Int,
     ) : HomeSection()
 
-    data class ScanProgressRow(val foundCount: Int) : HomeSection()
+    data class ScanProgressRow(val progress: ScanProgress) : HomeSection()
+}
+
+sealed interface ScanProgress {
+    data class Finding(val found: Int) : ScanProgress
+    data class ReadingDetails(val completed: Int, val total: Int) : ScanProgress
+    data class Incomplete(val found: Int) : ScanProgress
 }

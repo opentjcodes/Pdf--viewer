@@ -25,6 +25,8 @@ public class DefaultScrollHandle extends RelativeLayout implements ScrollHandle 
     private final static int HANDLE_LONG = 78;
     private final static int HANDLE_SHORT = 40;
     private final static int DEFAULT_TEXT_SIZE = 16;
+    public final static String DEBUG_HANDLE_DESCRIPTION = "scroll-handle";
+    public final static String DEBUG_HANDLE_LABEL_DESCRIPTION = "scroll-handle-label";
 
     private float relativeHandlerMiddle = 0f;
 
@@ -126,6 +128,11 @@ public class DefaultScrollHandle extends RelativeLayout implements ScrollHandle 
         pdfView.addView(this, lp);
 
         this.pdfView = pdfView;
+
+        if (PDFView.isDebugStateEnabled()) {
+            setContentDescription(DEBUG_HANDLE_DESCRIPTION);
+            textView.setContentDescription(DEBUG_HANDLE_LABEL_DESCRIPTION);
+        }
     }
 
     @Override

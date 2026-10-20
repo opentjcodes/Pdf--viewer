@@ -3,6 +3,7 @@
 package com.gitlab.mudlej.MjPdfReader.ui.home
 
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -117,11 +118,10 @@ class HomeSectionsAdapter(
         }
 
         fun bind(section: HomeSection.Hero) {
-            val previousFirstHash = heroAdapter.currentList.firstOrNull()?.hash
-            heroAdapter.submitList(section.items) {
-                if (section.items.firstOrNull()?.hash != previousFirstHash) {
-                    heroRecyclerView.scrollToPosition(0)
-                }
+            val previousFirstHash = heroAdapter.currentItems.firstOrNull()?.hash
+            heroAdapter.replaceItems(section.items)
+            if (section.items.firstOrNull()?.hash != previousFirstHash) {
+                heroRecyclerView.scrollToPosition(0)
             }
             if (boundCoverEpoch != coverEpoch) {
                 boundCoverEpoch = coverEpoch
@@ -160,9 +160,29 @@ class HomeSectionsAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(section: HomeSection.ScanProgressRow) {
-            binding.scanLabel.text = binding.root.context.getString(
-                R.string.home_scanning_progress, section.foundCount
-            )
+            val context = binding.root.context
+            when (val progress = section.progress) {
+                is ScanProgress.Finding -> {
+                    binding.scanIndicator.visibility = View.VISIBLE
+                    binding.scanIndicator.isIndeterminate = true
+                    binding.scanLabel.text = context.getString(R.string.home_scan_finding, progress.found)
+                }
+                is ScanProgress.ReadingDetails -> {
+                    binding.scanIndicator.visibility = View.VISIBLE
+                    binding.scanIndicator.isIndeterminate = false
+                    binding.scanIndicator.max = progress.total.coerceAtLeast(1)
+                    binding.scanIndicator.setProgressCompat(progress.completed, true)
+                    binding.scanLabel.text = context.getString(
+                        R.string.home_scan_reading_details, progress.completed, progress.total
+                    )
+                }
+                is ScanProgress.Incomplete -> {
+                    binding.scanIndicator.visibility = View.GONE
+                    binding.scanLabel.text = context.getString(
+                        R.string.home_scan_incomplete, progress.found
+                    )
+                }
+            }
         }
     }
 

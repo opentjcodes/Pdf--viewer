@@ -546,7 +546,6 @@
     <string name="dracula">دراکولا</string>
     <string name="text_size">اندازه متن</string>
     <string name="go_to_page">برو به صفحه</string>
-    <string name="no_input">بدون ورودی!</string>
     <string name="go_to">برو به</string>
     <string name="all_pages">همه صفحات</string>
     <string name="grid_columns">ستون‌ها</string>
@@ -662,6 +661,7 @@
     <string name="home_scan_locations_save">ذخیره</string>
     <string name="home_scan_locations_up">بالا</string>
     <string name="home_menu_scan_locations">مکان‌های پویش</string>
+    <string name="home_menu_full_rescan">پویش کامل دوباره</string>
     <string name="home_search_hint">جستجوی کتابخانه شما</string>
     <string name="home_tab_recent">اخیر</string>
     <string name="home_tab_library">کتابخانه</string>
@@ -683,7 +683,9 @@
     <string name="home_chip_abandoned">رهاشده</string>
     <string name="home_chip_all_files">همه پرونده‌ها</string>
     <string name="home_hero_progress_template">%1$d%% · %2$d/%3$d</string>
-    <string name="home_scanning_progress">در حال پویش… %1$d PDF پیدا شد</string>
+    <string name="home_scan_finding">در حال یافتن PDFها… %1$d پیدا شد</string>
+    <string name="home_scan_reading_details">در حال خواندن جزئیات PDF… %1$d از %2$d</string>
+    <string name="home_scan_incomplete">پویش ناقص است… %1$d PDF پیدا شد</string>
     <string name="home_menu_title">منوی کتابخانه</string>
     <string name="home_menu_view">نما</string>
     <string name="home_menu_stats">آمار کتابخانه</string>
@@ -888,7 +890,7 @@
     <string name="auto_backup_failure_notice">آخرین پشتیبان‌گیری خودکار ناموفق بود.</string>
     <string name="auto_backup_stale_notice">پشتیبان‌گیری خودکار بیش از یک روز است که اجرا نشده.</string>
     <string name="auto_backup_notice_action">تنظیمات پشتیبان‌گیری</string>
-    <string name="home_recent_permission_message">کتاب‌های شما برای باز شدن دوباره به دسترسی پرونده نیاز دارند. برای باز کردن آن‌ها دسترسی را اجازه دهید.</string>
+    <string name="home_recent_permission_message">برخی اسناد اخیر بدون دسترسی به پرونده‌ها قابل بررسی نیستند. دسترسی را مجاز کنید تا MJ PDF بتواند در صورت موجود بودن، آن‌ها را بررسی و باز کند.</string>
     <string name="home_list_badges_title">نشان‌های کارت فهرست</string>
     <string name="home_list_badges_summary">انتخاب کنید چه جزئیاتی زیر نام پرونده‌ها در نمای فهرست نشان داده شود.</string>
     <string name="home_badge_pages">شمار صفحات</string>

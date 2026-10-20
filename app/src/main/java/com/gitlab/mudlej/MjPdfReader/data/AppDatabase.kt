@@ -22,7 +22,7 @@ import java.io.File
 
 @Database(
     entities = [PdfRecord::class, PdfAnnotationSaveDestination::class, ScannedPdfEntry::class, UserBookmark::class],
-    version = 14,
+    version = 15,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2, spec = AppDatabase.MyAutoMigration::class),
@@ -36,7 +36,7 @@ import java.io.File
         AutoMigration(from = 9, to = 10),
         AutoMigration(from = 11, to = 12),
         AutoMigration(from = 12, to = 13),
-        AutoMigration(from = 13, to = 14)
+        AutoMigration(from = 13, to = 14),
     ]
 )
 @TypeConverters(DataConverter::class)
@@ -64,6 +64,7 @@ abstract class AppDatabase : RoomDatabase() {
                 val created = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
                     .addMigrations(AppDatabaseMigrations.MIGRATION_7_TO_8)
                     .addMigrations(AppDatabaseMigrations.MIGRATION_10_TO_11)
+                    .addMigrations(AppDatabaseMigrations.MIGRATION_14_TO_15)
                     .build()
                 INSTANCE = created
                 return created

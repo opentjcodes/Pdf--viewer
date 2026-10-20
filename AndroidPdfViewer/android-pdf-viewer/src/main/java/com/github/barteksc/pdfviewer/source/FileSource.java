@@ -16,7 +16,12 @@
 package com.github.barteksc.pdfviewer.source;
 
 import android.content.Context;
+import android.content.ContentUris;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.Build;
 import android.os.ParcelFileDescriptor;
+import android.provider.MediaStore;
 
 import com.shockwave.pdfium.PdfDocument;
 import com.shockwave.pdfium.PdfiumCore;
@@ -34,7 +39,27 @@ public class FileSource implements DocumentSource {
 
     @Override
     public PdfDocument createDocument(Context context, PdfiumCore core, String password) throws IOException {
-        ParcelFileDescriptor pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY);
+        ParcelFileDescriptor pfd = openReadDescriptor(context, file);
         return core.newDocument(pfd, password);
+    }
+
+    public static ParcelFileDescriptor openReadDescriptor(Context context, File file) throws IOException {
+        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.R) {
+            Uri collection = MediaStore.Files.getContentUri("external");
+            try (Cursor cursor = context.getContentResolver().query(collection,
+                    new String[]{MediaStore.MediaColumns._ID},
+                    MediaStore.MediaColumns.DATA + " = ?",
+                    new String[]{file.getCanonicalPath()}, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    Uri uri = ContentUris.withAppendedId(collection, cursor.getLong(0));
+                    ParcelFileDescriptor descriptor = context.getContentResolver().openFileDescriptor(uri, "r");
+                    if (descriptor != null) {
+                        return descriptor;
+                    }
+                }
+            } catch (IOException | IllegalArgumentException | SecurityException ignored) {
+            }
+        }
+        return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY);
     }
 }

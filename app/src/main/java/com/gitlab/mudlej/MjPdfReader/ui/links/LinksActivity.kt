@@ -3,7 +3,6 @@
 package com.gitlab.mudlej.MjPdfReader.ui.links
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
@@ -24,6 +23,7 @@ import com.gitlab.mudlej.MjPdfReader.pdf.ExtractorScreen
 import com.gitlab.mudlej.MjPdfReader.pdf.PdfExtractor
 import com.gitlab.mudlej.MjPdfReader.core.ui.configureSearchIcon
 import com.gitlab.mudlej.MjPdfReader.core.ui.copyToClipboard
+import com.gitlab.mudlej.MjPdfReader.core.ui.openDocumentLink
 import com.gitlab.mudlej.MjPdfReader.core.ui.tintIconsForChrome
 import com.gitlab.mudlej.MjPdfReader.core.ui.AppSnackbar
 import com.google.android.material.snackbar.Snackbar
@@ -184,14 +184,7 @@ class LinksActivity : AppCompatActivity(), LinkFunctions {
     }
 
     override fun onLinkClicked(link: Link) {
-        Intent(Intent.ACTION_VIEW).also {
-            it.data = (Uri.parse(link.url))
-            try {
-                startActivity(it)
-            } catch (throwable: Throwable) {
-                AppSnackbar.make(binding.root, getString(R.string.no_app_to_open_link), Snackbar.LENGTH_LONG).show()
-            }
-        }
+        openDocumentLink(binding.root, link.url)
     }
 
     override fun onPageNumberClicked(link: Link) {

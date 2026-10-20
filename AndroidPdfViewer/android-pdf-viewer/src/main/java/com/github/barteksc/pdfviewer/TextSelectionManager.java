@@ -203,25 +203,81 @@ final class TextSelectionManager {
         RectF union = null;
         float zoom = pdfView.getZoom();
         for (RectF pdfRect : pdfRunRects) {
-            RectF docRect = pdfView.pdfFile.pdfRectToDocument(
-                    selection.pageIndex,
-                    zoom,
-                    pdfRect.left,
-                    pdfRect.bottom,
-                    pdfRect.right,
-                    pdfRect.top
-            );
-            if (docRect == null) {
+            RectF viewRect = selectionRectInView(pdfView.pdfFile, pdfRect, zoom);
+            if (viewRect == null) {
                 continue;
             }
-            docRect.offset(pdfView.getCurrentXOffset(), pdfView.getCurrentYOffset());
             if (union == null) {
-                union = docRect;
+                union = viewRect;
             } else {
-                union.union(docRect);
+                union.union(viewRect);
             }
         }
         return union;
+    }
+
+    void appendDebugState(StringBuilder out) {
+        PdfFile pdfFile = pdfView.pdfFile;
+        if (pdfFile == null || selection == null || selection.isEmpty()) {
+            return;
+        }
+        PDFView.debugPut(out, "selPage", selection.pageIndex);
+        PDFView.debugPut(out, "selStart", selection.startChar());
+        PDFView.debugPut(out, "selEnd", selection.endChar());
+        PDFView.debugPut(out, "selCharCount", selectionCharCount);
+        PDFView.debugPut(out, "selRects", debugRunRects(pdfFile));
+        PDFView.debugPut(out, "selStartHandle", debugHandleCenter(Handle.START));
+        PDFView.debugPut(out, "selEndHandle", debugHandleCenter(Handle.END));
+        PDFView.debugPut(out, "selDragging", debugDraggingName());
+    }
+
+    private String debugRunRects(PdfFile pdfFile) {
+        StringBuilder rects = new StringBuilder();
+        float zoom = pdfView.getZoom();
+        for (RectF pdfRect : pdfRunRects) {
+            RectF viewRect = selectionRectInView(pdfFile, pdfRect, zoom);
+            if (viewRect == null) {
+                continue;
+            }
+            if (rects.length() > 0) {
+                rects.append('|');
+            }
+            rects.append(PDFView.debugRect(viewRect));
+        }
+        return rects.toString();
+    }
+
+    private RectF selectionRectInView(PdfFile pdfFile, RectF pdfRect, float zoom) {
+        RectF viewRect = pdfFile.pdfRectToDocument(
+                selection.pageIndex,
+                zoom,
+                pdfRect.left,
+                pdfRect.bottom,
+                pdfRect.right,
+                pdfRect.top
+        );
+        if (viewRect != null) {
+            viewRect.offset(pdfView.getCurrentXOffset(), pdfView.getCurrentYOffset());
+        }
+        return viewRect;
+    }
+
+    private String debugHandleCenter(Handle handle) {
+        PointF center = handleCenterView(handle);
+        if (center == null) {
+            return "";
+        }
+        return PDFView.debugFloat(center.x) + "," + PDFView.debugFloat(center.y);
+    }
+
+    private String debugDraggingName() {
+        if (dragging == Handle.START) {
+            return "start";
+        }
+        if (dragging == Handle.END) {
+            return "end";
+        }
+        return "none";
     }
 
     void clear() {
@@ -242,6 +298,7 @@ final class TextSelectionManager {
             pdfView.callbacks.callOnTextSelectionCleared();
         }
         pdfView.invalidate();
+        pdfView.publishDebugState();
     }
 
     void recycle() {
@@ -369,16 +426,19 @@ final class TextSelectionManager {
             dragOffsetX = 0f;
             dragOffsetY = 0f;
         }
+        int start = selection.startChar();
+        int end = selection.endChar();
         if (handle == Handle.START) {
-            selection.baseChar = selection.endChar();
-            selection.extentChar = selection.startChar();
+            selection.baseChar = end;
+            selection.extentChar = start;
         } else {
-            selection.baseChar = selection.startChar();
-            selection.extentChar = selection.endChar();
+            selection.baseChar = start;
+            selection.extentChar = end;
         }
         if (anchor != null) {
             showMagnifier(anchor.x, anchor.y);
         }
+        pdfView.publishDebugState();
         return true;
     }
 
@@ -435,11 +495,13 @@ final class TextSelectionManager {
                 getSelectionViewBounds(),
                 selection.pageIndex
         );
+        pdfView.publishDebugState();
     }
 
     private void endHandleDrag() {
         dragging = Handle.NONE;
         dismissMagnifier();
+        pdfView.publishDebugState();
     }
 
     private void showMagnifier(float viewX, float viewY) {
@@ -558,19 +620,11 @@ final class TextSelectionManager {
             return false;
         }
         for (RectF pdfRect : pdfRunRects) {
-            RectF docRect = pdfFile.pdfRectToDocument(
-                    selection.pageIndex,
-                    pdfView.getZoom(),
-                    pdfRect.left,
-                    pdfRect.bottom,
-                    pdfRect.right,
-                    pdfRect.top
-            );
-            if (docRect == null) {
+            RectF viewRect = selectionRectInView(pdfFile, pdfRect, pdfView.getZoom());
+            if (viewRect == null) {
                 continue;
             }
-            docRect.offset(pdfView.getCurrentXOffset(), pdfView.getCurrentYOffset());
-            if (docRect.contains(viewX, viewY)) {
+            if (viewRect.contains(viewX, viewY)) {
                 return true;
             }
         }

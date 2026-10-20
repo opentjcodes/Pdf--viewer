@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.ui.toast
 import com.gitlab.mudlej.MjPdfReader.ui.reader.annotation.HighlightPalette
 import com.gitlab.mudlej.MjPdfReader.data.Preferences
 import com.google.android.material.checkbox.MaterialCheckBox
@@ -113,7 +114,7 @@ private class HighlightColorViewHolder(
             } else {
                 val context = itemView.context
                 val message = context.getString(R.string.highlight_colors_max_toast, Preferences.highlightColorsCount)
-                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                toast(context, message, Toast.LENGTH_SHORT)
             }
         }
     }

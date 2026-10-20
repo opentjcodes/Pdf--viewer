@@ -6,9 +6,13 @@ import android.content.Context
 import androidx.recyclerview.widget.ConcatAdapter
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.gitlab.mudlej.MjPdfReader.BuildConfig
 import com.gitlab.mudlej.MjPdfReader.R
+import com.gitlab.mudlej.MjPdfReader.core.debug.HomeDebugState
 import com.gitlab.mudlej.MjPdfReader.data.Preferences
 import com.gitlab.mudlej.MjPdfReader.data.entity.ScannedPdfEntry
+import com.gitlab.mudlej.MjPdfReader.ui.home.scan.LibraryIndex
+import com.gitlab.mudlej.MjPdfReader.ui.home.scan.ScanPhase
 import kotlinx.coroutines.CoroutineScope
 
 class FoldersTabController(
@@ -41,8 +45,13 @@ class FoldersTabController(
     private var index: FolderIndex? = null
     private var currentDir: String? = null
     private var lastItems: List<HomeItem> = emptyList()
-    private var lastScanning = false
-    private var lastEntriesCount = 0
+    private var lastIndex = LibraryIndex()
+
+    private data class Contents(
+        val folders: List<FolderNode> = emptyList(),
+        val files: List<ScannedPdfEntry> = emptyList(),
+        val crumbs: List<Crumb> = emptyList(),
+    )
 
     fun attach(recyclerView: RecyclerView) {
         recyclerView.layoutManager = LinearLayoutManager(recyclerView.context)
@@ -51,11 +60,10 @@ class FoldersTabController(
         )
     }
 
-    fun render(allItems: List<HomeItem>, entries: List<ScannedPdfEntry>, scanning: Boolean) {
-        index = FolderIndex(entries, context.getString(R.string.home_folder_storage))
+    fun render(allItems: List<HomeItem>, scanIndex: LibraryIndex) {
+        index = FolderIndex(scanIndex.entries, context.getString(R.string.home_folder_storage))
         lastItems = allItems
-        lastScanning = scanning
-        lastEntriesCount = entries.size
+        lastIndex = scanIndex
         renderCurrent()
     }
 
@@ -94,64 +102,58 @@ class FoldersTabController(
     }
 
     private fun renderCurrent() {
-        val idx = index ?: return
-        val flat = pref.getHomeFolderFlat()
-        val dir = currentDir
+        val folderIndex = index ?: return
+        val contents = contentsFor(folderIndex)
 
-        val folders: List<FolderNode>
-        val files: List<ScannedPdfEntry>
-        val crumbs: List<Crumb>
-
-        if (flat) {
-            if (dir == null) {
-                folders = idx.flatFolders()
-                files = emptyList()
-                crumbs = emptyList()
-            } else {
-                folders = emptyList()
-                files = idx.filesIn(dir)
-                crumbs = idx.crumbsFor(dir)
-            }
+        breadcrumbAdapter.submit(contents.crumbs)
+        folderAdapter.submitList(contents.folders)
+        val fileItems = if (lastIndex.phase == ScanPhase.IDLE || lastIndex.phase == ScanPhase.INCOMPLETE) {
+            libraryController.reconcileWithScan(lastItems, contents.files)
         } else {
-            if (dir == null) {
-                if (idx.roots.size > 1) {
-                    folders = idx.rootFolders()
-                    files = emptyList()
-                } else {
-                    val root = idx.roots.firstOrNull()
-                    folders = root?.let { idx.foldersIn(it) }.orEmpty()
-                    files = root?.let { idx.filesIn(it) }.orEmpty()
-                }
-                crumbs = emptyList()
-            } else {
-                folders = idx.foldersIn(dir)
-                files = idx.filesIn(dir)
-                crumbs = idx.crumbsFor(dir)
-            }
+            libraryController.mergeDuringDiscovery(lastItems, contents.files)
         }
-
-        breadcrumbAdapter.submit(crumbs)
-        folderAdapter.submitList(folders)
-        filesAdapter.submitList(libraryController.mergeWithScan(lastItems, files))
-
-        topSections.submitList(buildList {
-            if (!hasFullAccess()) {
-                add(HomeSection.PermissionCard())
-            }
-            if (lastScanning) {
-                add(HomeSection.ScanProgressRow(lastEntriesCount))
-            }
-        })
-        bottomSections.submitList(buildList {
-            if (folders.isEmpty() && files.isEmpty() && !lastScanning) {
-                add(
-                    HomeSection.EmptyState(
-                        R.string.home_empty_all_title, R.string.home_empty_all_message
-                    )
-                )
-            }
-        })
-
+        filesAdapter.submitList(fileItems)
+        if (BuildConfig.DEBUG) {
+            HomeDebugState.noteRendered(HomeTab.FOLDERS, contents.folders.size + fileItems.size)
+        }
+        topSections.submitList(buildTopSections())
+        bottomSections.submitList(buildBottomSections(contents))
         onNavigationChanged()
     }
+
+    private fun contentsFor(folderIndex: FolderIndex): Contents {
+        val flat = pref.getHomeFolderFlat()
+        val dir = currentDir
+        return when {
+            dir != null -> Contents(
+                folders = if (flat) emptyList() else folderIndex.foldersIn(dir),
+                files = folderIndex.filesIn(dir),
+                crumbs = folderIndex.crumbsFor(dir),
+            )
+            flat -> Contents(folders = folderIndex.flatFolders())
+            folderIndex.roots.size > 1 -> Contents(folders = folderIndex.rootFolders())
+            else -> {
+                val root = folderIndex.roots.firstOrNull()
+                Contents(
+                    folders = root?.let { folderIndex.foldersIn(it) }.orEmpty(),
+                    files = root?.let { folderIndex.filesIn(it) }.orEmpty(),
+                )
+            }
+        }
+    }
+
+    private fun buildTopSections(): List<HomeSection> = buildList {
+        if (!hasFullAccess()) {
+            add(HomeSection.PermissionCard())
+        }
+        LibraryPresentation.progressFor(this@FoldersTabController.lastIndex)?.let { add(HomeSection.ScanProgressRow(it)) }
+    }
+
+    private fun buildBottomSections(contents: Contents): List<HomeSection> {
+        if (contents.folders.isNotEmpty() || contents.files.isNotEmpty() ||
+            LibraryPresentation.progressFor(lastIndex) != null
+        ) return emptyList()
+        return listOf(HomeSection.EmptyState(R.string.home_empty_all_title, R.string.home_empty_all_message))
+    }
+
 }

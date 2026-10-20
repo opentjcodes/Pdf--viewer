@@ -22,6 +22,9 @@ interface UserBookmarkDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun upsert(bookmark: UserBookmark)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    fun insertIfAbsent(bookmark: UserBookmark): Long
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun upsertAll(bookmarks: List<UserBookmark>)
 

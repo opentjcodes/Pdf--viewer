@@ -51,7 +51,7 @@ public class PdfiumCore {
         }
     }
 
-    private native long nativeOpenDocument(int fd, String password);
+    private native long nativeOpenDocument(int fd, String password) throws IOException;
 
     private native long nativeOpenMemDocument(byte[] data, String password);
 
@@ -165,6 +165,9 @@ public class PdfiumCore {
     private native PdfDocument.FormField nativeGetFormFieldAtPoint(long docPtr, long pagePtr,
                                                                    float x, float y, float tolerance);
 
+    private native PdfDocument.FormField nativeGetFormFieldByIndex(long docPtr, long pagePtr,
+                                                                    int annotIndex);
+
     private native float[] nativeGetFormFieldRects(long docPtr, long pagePtr);
 
     private native boolean nativeSetFormFieldText(long docPtr, long pagePtr, int annotIndex,
@@ -224,10 +227,21 @@ public class PdfiumCore {
     public PdfDocument newDocument(ParcelFileDescriptor fd, String password) throws IOException {
         PdfDocument document = new PdfDocument();
         document.parcelFileDescriptor = fd;
-        synchronized (lock) {
-            document.mNativeDocPtr = nativeOpenDocument(getNumFd(fd), password);
+        try {
+            synchronized (lock) {
+                document.mNativeDocPtr = nativeOpenDocument(getNumFd(fd), password);
+            }
+            return document;
+        } catch (IOException | RuntimeException | Error failure) {
+            if (fd != null) {
+                try {
+                    fd.close();
+                } catch (IOException closeFailure) {
+                    failure.addSuppressed(closeFailure);
+                }
+            }
+            throw failure;
         }
-        return document;
     }
 
     /** Create new document from bytearray */
@@ -1043,6 +1057,17 @@ public class PdfiumCore {
                 return null;
             }
             return nativeGetFormFieldAtPoint(doc.mNativeDocPtr, nativePagePtr, x, y, tolerance);
+        }
+    }
+
+    public PdfDocument.FormField getFormFieldByIndex(PdfDocument doc, int pageIndex,
+                                                     int annotationIndex) {
+        synchronized (lock) {
+            Long nativePagePtr = doc.mNativePagesPtr.get(pageIndex);
+            if (nativePagePtr == null) {
+                return null;
+            }
+            return nativeGetFormFieldByIndex(doc.mNativeDocPtr, nativePagePtr, annotationIndex);
         }
     }
 
