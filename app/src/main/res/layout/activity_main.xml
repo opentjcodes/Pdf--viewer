@@ -61,8 +61,8 @@
         android:layout_margin="16dp"
         android:visibility="gone"
         app:cardBackgroundColor="?attr/colorSurfaceContainerHigh"
-        app:cardCornerRadius="16dp"
-        app:cardElevation="6dp"
+        app:cardCornerRadius="28dp"
+        app:cardElevation="3dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
@@ -114,8 +114,8 @@
         android:layout_margin="16dp"
         android:visibility="gone"
         app:cardBackgroundColor="?attr/colorSurfaceContainerHigh"
-        app:cardCornerRadius="16dp"
-        app:cardElevation="6dp"
+        app:cardCornerRadius="28dp"
+        app:cardElevation="3dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -130,8 +130,8 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/textSelectionCopyButton"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:backgroundTint="?attr/colorSurfaceContainerHigh"
                 android:contentDescription="@string/copy"
                 android:insetLeft="0dp"
@@ -150,8 +150,8 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/textSelectionShareButton"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:backgroundTint="?attr/colorSurfaceContainerHigh"
                 android:contentDescription="@string/share"
                 android:insetLeft="0dp"
@@ -170,8 +170,8 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/textSelectionSearchWebButton"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:backgroundTint="?attr/colorSurfaceContainerHigh"
                 android:contentDescription="@string/search_web"
                 android:insetLeft="0dp"
@@ -190,8 +190,8 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/textSelectionNoteButton"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:backgroundTint="?attr/colorSurfaceContainerHigh"
                 android:contentDescription="@string/add_note"
                 android:insetLeft="0dp"
@@ -210,8 +210,8 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/textSelectionTranslateButton"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:backgroundTint="?attr/colorSurfaceContainerHigh"
                 android:contentDescription="@string/translate"
                 android:insetLeft="0dp"
@@ -230,8 +230,8 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/textSelectionDeleteHighlightButton"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:backgroundTint="?attr/colorSurfaceContainerHigh"
                 android:contentDescription="@string/delete"
                 android:insetLeft="0dp"
@@ -251,8 +251,8 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/textSelectionDiscardButton"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:backgroundTint="?attr/colorSurfaceContainerHigh"
                 android:contentDescription="@string/discard"
                 android:insetLeft="0dp"

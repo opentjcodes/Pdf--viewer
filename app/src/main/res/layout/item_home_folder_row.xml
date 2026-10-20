@@ -19,7 +19,7 @@
         android:layout_width="46dp"
         android:layout_height="46dp"
         app:cardBackgroundColor="?attr/colorSurfaceContainerHigh"
-        app:cardCornerRadius="14dp"
+        app:cardCornerRadius="16dp"
         app:cardElevation="0dp"
         app:strokeWidth="0dp">
 

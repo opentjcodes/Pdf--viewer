@@ -4,15 +4,15 @@
     <!-- as : Auto Scroll   -->
     <dimen name="as_button_size">36dp</dimen>
     <dimen name="as_button_padding">6dp</dimen>
-    <dimen name="fs_button_size">28dp</dimen>
+    <dimen name="fs_button_size">32dp</dimen>
     <dimen name="fs_button_vertical_margin">4dp</dimen>
-    <dimen name="fs_button_padding">5dp</dimen>
+    <dimen name="fs_button_padding">8dp</dimen>
     <dimen name="fs_button_padding_end">14dp</dimen>
     <dimen name="fs_button_icon_padding">7dp</dimen>
-    <dimen name="fs_button_text_size">12sp</dimen>
+    <dimen name="fs_button_text_size">14sp</dimen>
     <dimen name="fs_panel_margin">8dp</dimen>
     <dimen name="fs_panel_margin_top">32dp</dimen>
-    <dimen name="fs_panel_padding">8dp</dimen>
+    <dimen name="fs_panel_padding">10dp</dimen>
     <dimen name="fs_panel_fading_edge">24dp</dimen>
     <dimen name="fullscreen_info_max_width">280dp</dimen>
     <dimen name="text_mode_controls_max_width">560dp</dimen>

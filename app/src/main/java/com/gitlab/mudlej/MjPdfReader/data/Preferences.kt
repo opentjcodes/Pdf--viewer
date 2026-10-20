@@ -270,7 +270,7 @@ class Preferences(private val prefMan: SharedPreferences) {
         const val homeSortDefault = "NAME"
         const val historyEnabledDefault = true
         const val keepSharedCopiesDefault = true
-        const val sharedCopyModeDefault = "ALWAYS_COPY"
+        const val sharedCopyModeDefault = "NEVER_COPY"
         const val scanModeDefault = "NOT_CONFIGURED"
         val scanLocationsDefault: Set<String> = emptySet()
         const val themeSystem = "system"
@@ -529,7 +529,7 @@ class Preferences(private val prefMan: SharedPreferences) {
 
     fun getKeepSharedCopies() = safeGetBoolean(keepSharedCopiesKey, keepSharedCopiesDefault)
     fun getSharedCopyMode(): SharedCopyMode {
-        val fallback = if (getKeepSharedCopies()) sharedCopyModeDefault else SharedCopyMode.ASK.name
+        val fallback = if (getKeepSharedCopies()) sharedCopyModeDefault else SharedCopyMode.NEVER_COPY.name
         return safeGetEnum(sharedCopyModeKey, fallback)
     }
     fun getScanMode() = safeGetEnum<ScanMode>(scanModeKey, scanModeDefault)
