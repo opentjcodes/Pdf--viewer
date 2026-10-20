@@ -18,6 +18,8 @@
             android:id="@+id/searchBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginVertical="8dp"
             android:hint="@string/home_search_hint" />
 
         <com.google.android.material.appbar.MaterialToolbar
@@ -32,7 +34,9 @@
             android:id="@+id/homeTabs"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:tabMode="fixed" />
+            app:tabMode="fixed"
+            app:tabIndicatorFullWidth="false"
+            app:tabMinWidth="96dp" />
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.viewpager2.widget.ViewPager2
@@ -62,8 +66,10 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
-        android:layout_margin="16dp"
+        android:layout_margin="20dp"
         android:contentDescription="@string/home_open_pdf"
+        app:fabCustomSize="64dp"
+        app:maxImageSize="28dp"
         app:srcCompat="@drawable/ic_open_pdf" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

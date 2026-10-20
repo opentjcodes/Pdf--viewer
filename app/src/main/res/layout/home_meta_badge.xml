@@ -5,7 +5,7 @@
     android:layout_height="wrap_content"
     android:background="@drawable/home_meta_badge_background"
     android:maxLines="1"
-    android:paddingHorizontal="8dp"
+    android:paddingHorizontal="10dp"
     android:paddingVertical="3dp"
     android:textAppearance="?attr/textAppearanceLabelMedium"
     android:textColor="?attr/colorOnSurfaceVariant" />

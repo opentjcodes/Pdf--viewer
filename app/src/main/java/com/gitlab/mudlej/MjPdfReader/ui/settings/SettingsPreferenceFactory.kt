@@ -475,7 +475,7 @@ internal class SettingsPreferenceFactory(
                     items = options.map { getString(it.labelRes) },
                     checkedIndex = options.indexOf(appPreferences.getSharedCopyMode()),
                     onReset = {
-                        appPreferences.setSharedCopyMode(SharedCopyMode.ALWAYS_COPY)
+                        appPreferences.setSharedCopyMode(SharedCopyMode.NEVER_COPY)
                         host?.refreshPreferences()
                     },
                 ) { index ->

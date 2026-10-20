@@ -17,17 +17,23 @@
         <item name="colorErrorContainer">@color/md_theme_errorContainer</item>
         <item name="colorOnError">@color/md_theme_onError</item>
         <item name="colorOnErrorContainer">@color/md_theme_onErrorContainer</item>
-        <item name="android:colorBackground">@color/md_theme_surfaceContainerHigh</item>
+        <item name="android:colorBackground">@color/md_theme_surface</item>
         <item name="colorOnBackground">@color/md_theme_onBackground</item>
-        <item name="colorSurface">@color/md_theme_surfaceContainerHigh</item>
+        <item name="colorSurface">@color/md_theme_surface</item>
         <item name="colorOnSurface">@color/md_theme_onSurface</item>
-        <item name="colorSurfaceContainer">@color/md_theme_surfaceContainerHigh</item>
-        <item name="colorSurfaceContainerLow">@color/md_theme_surfaceContainerHigh</item>
-        <item name="colorSurfaceContainerLowest">@color/md_theme_surfaceContainerHigh</item>
+        <item name="colorSurfaceContainerLowest">@color/md_theme_surfaceContainerLowest</item>
+        <item name="colorSurfaceContainerLow">@color/md_theme_surfaceContainerLow</item>
+        <item name="colorSurfaceContainer">@color/md_theme_surfaceContainer</item>
         <item name="colorSurfaceContainerHigh">@color/md_theme_surfaceContainerHigh</item>
-        <item name="colorSurfaceContainerHighest">@color/md_theme_surfaceContainerHigh</item>
-        <item name="colorSurfaceBright">@color/md_theme_surfaceContainerHigh</item>
-        <item name="colorSurfaceDim">@color/md_theme_surfaceContainerHigh</item>
+        <item name="colorSurfaceContainerHighest">@color/md_theme_surfaceContainerHighest</item>
+        <item name="colorSurfaceBright">@color/md_theme_surfaceBright</item>
+        <item name="colorSurfaceDim">@color/md_theme_surfaceDim</item>
+        <item name="colorOutlineVariant">@color/md_theme_outlineVariant</item>
+        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.App.Small</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.App.Medium</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.App.Large</item>
+        <item name="floatingActionButtonStyle">@style/ExpressiveFab</item>
+        <item name="searchBarStyle">@style/ExpressiveSearchBar</item>
         <item name="colorSurfaceVariant">@color/md_theme_surfaceVariant</item>
         <item name="colorOnSurfaceVariant">@color/md_theme_onSurfaceVariant</item>
         <item name="colorOutline">@color/md_theme_outline</item>
@@ -35,7 +41,7 @@
         <item name="colorSurfaceInverse">@color/md_theme_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_inversePrimary</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">?attr/colorSurfaceContainerHigh</item>
+        <item name="android:navigationBarColor">?attr/colorSurfaceContainer</item>
         <item name="android:enforceStatusBarContrast" tools:targetApi="q">false</item>
         <item name="android:enforceNavigationBarContrast" tools:targetApi="q">false</item>
         <item name="android:windowOptOutEdgeToEdgeEnforcement" tools:targetApi="35">true</item>
@@ -102,16 +108,19 @@
 
     <style name="ShapeAppearanceOverlay.App.roundedImage" parent="">
         <item name="cornerFamily">rounded</item>
-        <item name="cornerSize">5%</item>
+        <item name="cornerSize">12dp</item>
     </style>
 
     <style name="ChromeMaterialButton" parent="Widget.Material3.Button">
         <item name="strokeWidth">1dp</item>
-        <item name="strokeColor">?attr/colorOnSurface</item>
+        <item name="strokeColor">?attr/colorOutlineVariant</item>
         <item name="android:textColor">?attr/colorOnSurface</item>
         <item name="iconTint">?attr/colorOnSurface</item>
         <item name="backgroundTint">?attr/colorSurfaceContainerHigh</item>
         <item name="android:backgroundTint">?attr/colorSurfaceContainerHigh</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:minWidth">48dp</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.App.Pill</item>
         <item name="elevation">0dp</item>
         <item name="android:stateListAnimator">@null</item>
     </style>
@@ -187,7 +196,7 @@
     </style>
 
     <style name="ChromeSnackbar" parent="Widget.Material3.Snackbar">
-        <item name="backgroundTint">?attr/colorSurfaceContainerHigh</item>
+        <item name="backgroundTint">?attr/colorInverseSurface</item>
         <item name="shapeAppearance">@style/ChromeSnackbarShape</item>
         <item name="elevation">6dp</item>
         <item name="android:layout_margin">16dp</item>
@@ -195,11 +204,11 @@
 
     <style name="ChromeSnackbarShape" parent="">
         <item name="cornerFamily">rounded</item>
-        <item name="cornerSize">16dp</item>
+        <item name="cornerSize">20dp</item>
     </style>
 
     <style name="ChromeSnackbarTextView" parent="Widget.Material3.Snackbar.TextView">
-        <item name="android:textColor">?attr/colorOnSurface</item>
+        <item name="android:textColor">?attr/colorOnSurfaceInverse</item>
         <item name="android:alpha">1</item>
     </style>
 
@@ -207,6 +216,46 @@
         <item name="strokeWidth">0dp</item>
         <item name="strokeColor">@android:color/transparent</item>
         <item name="android:backgroundTint">@android:color/transparent</item>
-        <item name="android:textColor">?attr/colorOnSurface</item>
+        <item name="android:textColor">?attr/colorPrimaryInverse</item>
+    </style>
+
+    <!-- Expressive shapes: 16dp / 20dp / 28dp rounded corners, full pills for controls -->
+    <style name="ShapeAppearance.App.Small" parent="ShapeAppearance.Material3.SmallComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">16dp</item>
+    </style>
+
+    <style name="ShapeAppearance.App.Medium" parent="ShapeAppearance.Material3.MediumComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">20dp</item>
+    </style>
+
+    <style name="ShapeAppearance.App.Large" parent="ShapeAppearance.Material3.LargeComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">28dp</item>
+    </style>
+
+    <style name="ShapeAppearance.App.Pill" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">50%</item>
+    </style>
+
+    <style name="ExpressiveFab" parent="Widget.Material3.FloatingActionButton.Primary">
+        <item name="backgroundTint">?attr/colorPrimaryContainer</item>
+        <item name="tint">?attr/colorOnPrimaryContainer</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.App.Fab</item>
+        <item name="elevation">3dp</item>
+    </style>
+
+    <style name="ShapeAppearance.App.Fab" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">20dp</item>
+    </style>
+
+
+    <style name="ExpressiveSearchBar" parent="Widget.Material3.SearchBar">
+        <item name="backgroundTint">?attr/colorSurfaceContainerHigh</item>
+        <item name="android:minHeight">56dp</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.App.Pill</item>
     </style>
 </resources>

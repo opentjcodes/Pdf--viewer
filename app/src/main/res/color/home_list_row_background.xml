@@ -2,5 +2,5 @@
 <!-- Written by Mudlej. License is GPLv3. -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:color="?attr/colorSecondaryContainer" android:state_checked="true" />
-    <item android:color="@android:color/transparent" />
+    <item android:color="?attr/colorSurfaceContainerLow" />
 </selector>

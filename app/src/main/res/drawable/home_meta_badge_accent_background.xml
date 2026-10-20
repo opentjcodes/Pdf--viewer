@@ -2,6 +2,6 @@
 <!-- Written by Mudlej. License is GPLv3. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <corners android:radius="8dp" />
+    <corners android:radius="50dp" />
     <solid android:color="?attr/colorPrimaryContainer" />
 </shape>

@@ -60,6 +60,9 @@ class TemporaryCopyImporter(
     }
 
     private suspend fun importIfTemporary(fileHash: String, uri: Uri, name: String) {
+        if (pref.getSharedCopyMode() == SharedCopyMode.NEVER_COPY) {
+            return
+        }
         if (PersistedGrantKeeper.takeReadGrant(context, uri)) {
             return
         }

@@ -937,6 +937,8 @@
     <string name="history_enabled_summary">Remember opened files, reading positions, and per file settings.</string>
     <string name="keep_shared_copies_title">Keep Copies of Shared Files</string>
     <string name="keep_shared_copies_summary">When a PDF arrives through a temporary share from another app, save a copy in Documents/MJ PDF so it stays available.</string>
+    <string name="shared_copy_mode_never">Never copy (open in place)</string>
+    <string name="shared_copy_mode_never_summary">Files are opened directly from where they are. Nothing is duplicated on your device.</string>
     <string name="shared_copy_mode_always">Always keep a copy</string>
     <string name="shared_copy_mode_always_summary">Copies are saved without asking. Very large files and low storage still ask first.</string>
     <string name="shared_copy_mode_ask">Ask each time</string>
